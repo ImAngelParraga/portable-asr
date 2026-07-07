@@ -1,0 +1,30 @@
+[Unit]
+Description=OpenAI-compatible ASR Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=asr
+Group=asr
+WorkingDirectory=/opt/postable-asr
+EnvironmentFile=/opt/postable-asr/asr.env
+Environment=LD_LIBRARY_PATH=/opt/postable-asr/venv/lib/pythonX.Y/site-packages/nvidia/cublas/lib:/opt/postable-asr/venv/lib/pythonX.Y/site-packages/nvidia/cudnn/lib:/opt/postable-asr/venv/lib/pythonX.Y/site-packages/nvidia/cuda_runtime/lib
+ExecStart=/opt/postable-asr/venv/bin/python /opt/postable-asr/asr_server.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateDevices=no
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/opt/postable-asr /tmp
+
+[Install]
+WantedBy=multi-user.target

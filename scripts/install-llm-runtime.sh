@@ -29,7 +29,7 @@ LLM_MIN_TOTAL_VRAM_MIB="${LLM_MIN_TOTAL_VRAM_MIB:-8192}"
 LLM_SKIP_DOWNLOAD="${LLM_SKIP_DOWNLOAD:-0}"
 LLM_SMOKE_RAW="${LLM_SMOKE_RAW:-question how are you}"
 LLM_SMOKE_SYSTEM="${LLM_SMOKE_SYSTEM:-Return only the cleaned transcript. Keep the same language. Clean spelling, capitalization, punctuation, and obvious transcript errors without changing meaning.}"
-LLM_SERVICE_NAME="${LLM_SERVICE_NAME:-asr-service}"
+LLM_SERVICE_NAME="${LLM_SERVICE_NAME:-postable-asr}"
 
 if [ "${LLM_BACKEND}" = "cuda" ]; then
     if ! command -v nvidia-smi >/dev/null 2>&1; then
