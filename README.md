@@ -4,7 +4,7 @@ OpenAI-compatible speech-to-text service built with FastAPI and `faster-whisper`
 
 ## Related Project
 
-[OpenVoiceIME](https://github.com/ImAngelParraga/OpenIME) is an Android voice keyboard that can send recordings to any OpenAI-compatible `/v1/audio/transcriptions` endpoint. This service can be used as a self-hosted transcription backend for OpenVoiceIME or other compatible clients.
+[OpenVoiceIME](https://github.com/ImAngelParraga/OpenVoiceIME) is an Android voice keyboard that can send recordings to any OpenAI-compatible `/v1/audio/transcriptions` endpoint. This service can be used as a self-hosted transcription backend for OpenVoiceIME or other compatible clients.
 
 ## Features
 
