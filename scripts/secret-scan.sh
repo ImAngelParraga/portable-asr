@@ -8,7 +8,6 @@ patterns=(
     '/home/rankis'
     '/opt/rankis'
     'ASR_BEARER_TOKEN=[A-Za-z0-9_./+-]{12,}'
-    'OpenIME'
     'Jellyfin'
     'hermes-stt'
     'hermes-llm'

@@ -2,6 +2,10 @@
 
 OpenAI-compatible speech-to-text service built with FastAPI and `faster-whisper`. It can run as a small CPU-only local service, use Nvidia CUDA for faster transcription, and optionally clean transcripts with a local or external OpenAI-compatible LLM.
 
+## Related Project
+
+[OpenVoiceIME](https://github.com/ImAngelParraga/OpenIME) is an Android voice keyboard that can send recordings to any OpenAI-compatible `/v1/audio/transcriptions` endpoint. This service can be used as a self-hosted transcription backend for OpenVoiceIME or other compatible clients.
+
 ## Features
 
 - `POST /v1/audio/transcriptions` for OpenAI-compatible audio transcription.
