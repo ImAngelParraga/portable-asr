@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ASR_DIR="${ASR_DIR:-/opt/postable-asr}"
+ASR_DIR="${ASR_DIR:-/opt/portable-asr}"
 ASR_ENV="${ASR_ENV:-${ASR_DIR}/asr.env}"
 
 if [ ! -f "${ASR_ENV}" ]; then

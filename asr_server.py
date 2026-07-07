@@ -45,7 +45,7 @@ ASR_MAX_FILE_SIZE = int(os.environ.get("ASR_MAX_FILE_SIZE", str(25 * 1024 * 1024
 ASR_REQUEST_TIMEOUT = int(os.environ.get("ASR_REQUEST_TIMEOUT", "120"))
 ASR_MAX_CONCURRENCY = int(os.environ.get("ASR_MAX_CONCURRENCY", "1"))
 ASR_BUSY_WAIT_TIMEOUT = int(os.environ.get("ASR_BUSY_WAIT_TIMEOUT", "600"))
-ASR_MODEL_CACHE_DIR = os.environ.get("ASR_MODEL_CACHE_DIR", "/opt/postable-asr/models")
+ASR_MODEL_CACHE_DIR = os.environ.get("ASR_MODEL_CACHE_DIR", "/opt/portable-asr/models")
 ASR_LISTEN_HOST = os.environ.get("ASR_LISTEN_HOST", "127.0.0.1")
 ASR_LISTEN_PORT = int(os.environ.get("ASR_LISTEN_PORT", "9000"))
 ASR_POSTPROCESS_ENABLED = os.environ.get("ASR_POSTPROCESS_ENABLED", "0") == "1"
@@ -69,8 +69,8 @@ ASR_LLM_IDLE_TIMEOUT = int(os.environ.get("ASR_LLM_IDLE_TIMEOUT", "3600"))
 ASR_LLM_WATCH_INTERVAL = int(os.environ.get("ASR_LLM_WATCH_INTERVAL", "3"))
 ASR_LLM_START_TIMEOUT = int(os.environ.get("ASR_LLM_START_TIMEOUT", "180"))
 ASR_LLM_BUSY_WAIT_TIMEOUT = int(os.environ.get("ASR_LLM_BUSY_WAIT_TIMEOUT", "600"))
-ASR_LLM_LOG_FILE = os.environ.get("ASR_LLM_LOG_FILE", "/opt/postable-asr/llama-server.log")
-ASR_LLM_PID_FILE = os.environ.get("ASR_LLM_PID_FILE", "/opt/postable-asr/llama-server.pid")
+ASR_LLM_LOG_FILE = os.environ.get("ASR_LLM_LOG_FILE", "/opt/portable-asr/llama-server.log")
+ASR_LLM_PID_FILE = os.environ.get("ASR_LLM_PID_FILE", "/opt/portable-asr/llama-server.pid")
 ASR_LLM_CACHE_REUSE = int(os.environ.get("ASR_LLM_CACHE_REUSE", "256"))
 ASR_LLM_SERVER_BIN = os.environ.get("ASR_LLM_SERVER_BIN", "/opt/asr-llm/bin/llama-server")
 ASR_GPU_WATCH_ENABLED = os.environ.get("ASR_GPU_WATCH_ENABLED", "0") == "1"
@@ -1326,7 +1326,7 @@ async def lifespan(app: FastAPI):
     print("[asr] Shutdown complete")
 
 app = FastAPI(
-    title="Postable ASR",
+    title="Portable ASR",
     description="OpenAI-compatible speech-to-text microservice",
     version="1.0.0",
     lifespan=lifespan,

@@ -8,8 +8,8 @@ fi
 
 SERVICE_USER="${SERVICE_USER:-${SUDO_USER:-${USER:-root}}}"
 SERVICE_GROUP="${SERVICE_GROUP:-${SERVICE_USER}}"
-ASR_DIR="${ASR_DIR:-/opt/postable-asr}"
-SERVICE_NAME="${SERVICE_NAME:-postable-asr}"
+ASR_DIR="${ASR_DIR:-/opt/portable-asr}"
+SERVICE_NAME="${SERVICE_NAME:-portable-asr}"
 ASR_ENV_PATH="${ASR_ENV_PATH:-${ASR_DIR}/asr.env}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASR_ENV_SOURCE="${ASR_ENV_SOURCE:-${PROJECT_DIR}/config/asr.env.example}"

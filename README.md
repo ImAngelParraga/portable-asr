@@ -1,4 +1,4 @@
-# Postable ASR
+# Portable ASR
 
 OpenAI-compatible speech-to-text service built with FastAPI and `faster-whisper`. It can run as a small CPU-only local service, use Nvidia CUDA for faster transcription, and optionally clean transcripts with a local or external OpenAI-compatible LLM.
 
@@ -88,8 +88,8 @@ sudo ./scripts/install-service.sh
 Common overrides:
 
 ```bash
-ASR_DIR=/opt/postable-asr \
-SERVICE_NAME=postable-asr \
+ASR_DIR=/opt/portable-asr \
+SERVICE_NAME=portable-asr \
 SERVICE_USER=asr \
 ASR_ENV_SOURCE=config/profiles/cpu.env.example \
 sudo ./scripts/install-service.sh
@@ -169,7 +169,7 @@ ASR_POSTPROCESS_MODEL=example-cleanup-model
 - `scripts/install-service.sh`: configurable systemd installer.
 - `scripts/install-llm-runtime.sh`: optional configurable llama.cpp installer.
 - `scripts/secret-scan.sh`: public-release leak scanner.
-- `systemd/postable-asr.service.example`: generic systemd unit example.
+- `systemd/portable-asr.service.example`: generic systemd unit example.
 - `docs/`: public setup and release docs.
 - `tests/`: unit tests.
 
