@@ -1,6 +1,10 @@
 import unittest
 
-from asr_server import _apply_explicit_paragraph_breaks, _remove_quoted_and_empty_wrapper_lines
+from asr_server import (
+    _apply_explicit_paragraph_breaks,
+    _remove_quoted_and_empty_wrapper_lines,
+    _repair_technical_literal_format,
+)
 
 
 class OutputCleanupTest(unittest.TestCase):
@@ -38,6 +42,87 @@ class OutputCleanupTest(unittest.TestCase):
         self.assertEqual(
             _apply_explicit_paragraph_breaks("¡Vamos, Japón! Ah, por cierto: llamé a mi mejor amigo."),
             "¡Vamos, Japón!\n\nAh, por cierto: llamé a mi mejor amigo.",
+        )
+
+    def test_reconstructs_guion_bajo_inside_technical_literal(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "b2b guion bajo round guion bajo history",
+                "b2b guion bajo round guion bajo history",
+            ),
+            "b2b_round_history",
+        )
+
+    def test_reconstructs_barra_baja_inside_technical_literal(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "b2b barra baja round barra baja history",
+                "b2b barra baja round barra baja history",
+            ),
+            "b2b_round_history",
+        )
+
+    def test_underscore_hint_fixes_hyphenated_capitalized_identifier(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "b2b guion bajo round guion bajo history",
+                "B2b-Round-History",
+            ),
+            "b2b_round_history",
+        )
+
+    def test_underscore_hint_supports_accented_identifier_words(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "contraseña guion bajo temporal",
+                "Contraseña-Temporal",
+            ),
+            "contraseña_temporal",
+        )
+
+    def test_reconstructs_unmodified_accented_spoken_literal(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "contraseña guion bajo temporal",
+                "contraseña guion bajo temporal",
+            ),
+            "contraseña_temporal",
+        )
+
+    def test_reconstructs_spoken_literal_after_technical_cue(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "la variable contraseña guion bajo temporal",
+                "La variable contraseña guion bajo temporal.",
+            ),
+            "La variable contraseña_temporal.",
+        )
+
+    def test_underscore_hint_only_repairs_matching_sequence(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "b2b guion bajo history y state of the art",
+                "B2b-History y state-of-the-art.",
+            ),
+            "b2b_history y state-of-the-art.",
+        )
+
+    def test_hyphen_hint_repairs_wrong_underscore(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "frontend guion backend",
+                "Frontend_Backend",
+            ),
+            "frontend-backend",
+        )
+
+    def test_normal_sentence_keeps_barra_baja_words(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "la barra baja está mal",
+                "La barra baja está mal.",
+            ),
+            "La barra baja está mal.",
         )
 
 

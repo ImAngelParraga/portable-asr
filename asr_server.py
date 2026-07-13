@@ -997,6 +997,116 @@ def _apply_explicit_paragraph_breaks(text: str) -> str:
     )
     return re.sub(r'\n{3,}', '\n\n', text).strip()
 
+_TECH_TOKEN_PATTERN = r"[^\W_]+"
+_TECH_SPOKEN_SYMBOL_PATTERN = (
+    r"underscore|(?:guion|guión|barra)\s+baj[ao]|"
+    r"hyphen|dash|guion|guión|"
+    r"dot|punto|slash|barra|backslash|colon|dos\s+puntos|at|arroba"
+)
+_TECH_LITERAL_SEQUENCE_RE = re.compile(
+    rf"(?<!\w){_TECH_TOKEN_PATTERN}(?:\s+(?:{_TECH_SPOKEN_SYMBOL_PATTERN})\s+{_TECH_TOKEN_PATTERN})+(?!\w)",
+    re.IGNORECASE,
+)
+
+def _spoken_symbol_to_literal(symbol: str) -> str:
+    normalized = _normalized_plain_text(symbol)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if normalized in {"underscore", "guion bajo", "barra baja", "guion baja", "barra bajo"}:
+        return "_"
+    if normalized in {"hyphen", "dash", "guion"}:
+        return "-"
+    if normalized in {"dot", "punto"}:
+        return "."
+    if normalized in {"slash", "barra"}:
+        return "/"
+    if normalized == "backslash":
+        return "\\"
+    if normalized in {"colon", "dos puntos"}:
+        return ":"
+    if normalized in {"at", "arroba"}:
+        return "@"
+    return symbol
+
+def _technical_literal_parts(sequence: str) -> tuple[list[str], list[str]]:
+    parts = re.split(
+        rf"\s+({_TECH_SPOKEN_SYMBOL_PATTERN})\s+",
+        sequence,
+        flags=re.IGNORECASE,
+    )
+    return parts[::2], parts[1::2]
+
+def _technical_literal_value(words: list[str], spoken_symbols: list[str]) -> str:
+    rebuilt = [words[0].lower()]
+    for symbol, word in zip(spoken_symbols, words[1:]):
+        rebuilt.extend((_spoken_symbol_to_literal(symbol), word.lower()))
+    return "".join(rebuilt)
+
+def _technical_literal_pattern(
+    words: list[str],
+    separators: list[str],
+) -> re.Pattern:
+    pattern = re.escape(words[0])
+    for separator, word in zip(separators, words[1:]):
+        pattern += separator + re.escape(word)
+    return re.compile(rf"(?<!\w){pattern}(?!\w)", re.IGNORECASE)
+
+def _spoken_literal_is_high_confidence(
+    raw_text: str,
+    match: re.Match,
+    words: list[str],
+    spoken_symbols: list[str],
+) -> bool:
+    if len(spoken_symbols) > 1 or any(any(char.isdigit() for char in word) for word in words):
+        return True
+    if re.fullmatch(
+        rf"\s*{re.escape(match.group(0))}\s*[.!?¡¿]*\s*",
+        raw_text,
+        re.IGNORECASE,
+    ):
+        return True
+    return bool(
+        re.search(
+            r"(?i)\b(?:variable|campo|identificador|archivo|fichero|nombre|token|clave|"
+            r"columna|tabla|función|funcion|método|metodo|endpoint)\s*"
+            r"(?:es|llamad[oa]|denominad[oa])?\s*$",
+            raw_text[:match.start()],
+        )
+    )
+
+def _repair_spoken_technical_literals(raw_text: str, corrected: str) -> str:
+    """Align spoken separators with matching words in the corrected transcript."""
+    for match in _TECH_LITERAL_SEQUENCE_RE.finditer(raw_text):
+        words, spoken_symbols = _technical_literal_parts(match.group(0))
+        value = _technical_literal_value(words, spoken_symbols)
+        literal_symbols = [_spoken_symbol_to_literal(symbol) for symbol in spoken_symbols]
+        written_separators = [
+            r"\s*[-_]\s*" if symbol in {"-", "_"} else rf"\s*{re.escape(symbol)}\s*"
+            for symbol in literal_symbols
+        ]
+        corrected = _technical_literal_pattern(words, written_separators).sub(value, corrected)
+
+        if _spoken_literal_is_high_confidence(raw_text, match, words, spoken_symbols):
+            spoken_separators = [
+                rf"\s+(?:{_TECH_SPOKEN_SYMBOL_PATTERN})\s+"
+                for _ in spoken_symbols
+            ]
+            corrected = _technical_literal_pattern(words, spoken_separators).sub(value, corrected)
+    return corrected
+
+def _lowercase_joined_technical_literals(text: str) -> str:
+    """Keep identifier/path-like words lowercase across hyphen/underscore joins."""
+    word = r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9]+"
+
+    def replace_match(match: re.Match) -> str:
+        return match.group(0).lower()
+
+    return re.sub(rf"\b{word}(?:[_-]{word})+\b", replace_match, text)
+
+def _repair_technical_literal_format(raw_text: str, corrected: str) -> str:
+    """Apply deterministic formatting for spoken technical literals."""
+    corrected = _repair_spoken_technical_literals(raw_text, corrected)
+    return _lowercase_joined_technical_literals(corrected)
+
 def _protect_non_isolated_expression_rewrite(raw_text: str, corrected: str) -> str:
     """Reject laughter-only rewrites when the raw text was not an isolated command."""
     if _isolated_expression_command_value(raw_text) is not None:
@@ -1269,6 +1379,7 @@ def _postprocess_transcript(
         corrected,
         flags=re.IGNORECASE,
     )
+    corrected = _repair_technical_literal_format(raw_text, corrected)
     corrected = re.sub(r'([?.!,;:])\1{3,}', r'\1', corrected)
     corrected = re.sub(r'\s+([?.!,;:])', r'\1', corrected)
     corrected = _protect_spanish_diminutive_rewrite(raw_text, corrected)

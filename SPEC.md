@@ -29,6 +29,7 @@ V6: Optional post-processing failure returns raw Whisper text; required post-pro
 V7: Translation endpoint/extension has explicit source/target behavior, authentication, timeout, failure policy, and tests before any client exposes translation UI.
 V8: Existing transcription clients sending only current OpenAI-compatible fields retain current behavior.
 V9: Tokens, prompts, vocabulary context, and transcript bodies are absent from default logs; diagnostics contain lengths/timings/status only.
+V10: Spoken technical separators align only matching raw/corrected word sequences, accept Unicode letters/digits, preserve unrelated separators, and lowercase joined identifiers.
 
 §T
 id|status|task|detail|cites
@@ -40,3 +41,4 @@ T5|.|Compatibility matrix|Test legacy transcription request, language hint, prom
 
 §B
 id|date|cause|fix
+B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
