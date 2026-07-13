@@ -1050,6 +1050,11 @@ def _technical_literal_pattern(
         pattern += separator + re.escape(word)
     return re.compile(rf"(?<!\w){pattern}(?!\w)", re.IGNORECASE)
 
+def _joined_spoken_symbol_separator(symbol: str) -> str:
+    joiner = r"\s*[-_]\s*"
+    symbol_words = re.split(r"\s+", symbol.strip())
+    return joiner + joiner.join(re.escape(word) for word in symbol_words) + joiner
+
 def _spoken_literal_is_high_confidence(
     raw_text: str,
     match: re.Match,
@@ -1080,8 +1085,10 @@ def _repair_spoken_technical_literals(raw_text: str, corrected: str) -> str:
         value = _technical_literal_value(words, spoken_symbols)
         literal_symbols = [_spoken_symbol_to_literal(symbol) for symbol in spoken_symbols]
         written_separators = [
-            r"\s*[-_]\s*" if symbol in {"-", "_"} else rf"\s*{re.escape(symbol)}\s*"
-            for symbol in literal_symbols
+            rf"(?:\s*[-_]\s*|{_joined_spoken_symbol_separator(spoken)})"
+            if literal in {"-", "_"}
+            else rf"\s*{re.escape(literal)}\s*"
+            for literal, spoken in zip(literal_symbols, spoken_symbols)
         ]
         corrected = _technical_literal_pattern(words, written_separators).sub(value, corrected)
 

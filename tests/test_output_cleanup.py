@@ -89,6 +89,15 @@ class OutputCleanupTest(unittest.TestCase):
             "contraseña_temporal",
         )
 
+    def test_collapses_joined_spoken_separator_words(self):
+        self.assertEqual(
+            _repair_technical_literal_format(
+                "contraseña guion bajo temporal",
+                "contraseña_guion_bajo_temporal",
+            ),
+            "contraseña_temporal",
+        )
+
     def test_reconstructs_spoken_literal_after_technical_cue(self):
         self.assertEqual(
             _repair_technical_literal_format(
