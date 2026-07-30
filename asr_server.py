@@ -1092,6 +1092,47 @@ def _spoken_literal_is_high_confidence(
         )
     )
 
+def _restore_low_confidence_spoken_literal(
+    raw_match: re.Match,
+    words: list[str],
+    spoken_symbols: list[str],
+    corrected: str,
+) -> str:
+    """Restore ordinary spoken-symbol words when cleanup treats them as commands."""
+    separator_patterns = []
+    for spoken in spoken_symbols:
+        literal = _spoken_symbol_to_literal(spoken)
+        variants = [
+            rf"\s*{re.escape(literal)}\s*",
+            r"\s+",
+        ]
+        spoken_words = re.split(r"\s+", spoken.strip())
+        if len(spoken_words) > 1:
+            joined_words = r"\s*[-_]\s*".join(
+                re.escape(word)
+                for word in spoken_words
+            )
+            variants.extend(
+                (
+                    rf"\s+{joined_words}\s+",
+                    _joined_spoken_symbol_separator(spoken),
+                )
+            )
+        separator_patterns.append(rf"(?:{'|'.join(variants)})")
+
+    raw_sequence = raw_match.group(0)
+
+    def restore_match(corrected_match: re.Match) -> str:
+        if corrected_match.group(0)[:1].isupper() and raw_sequence[:1].islower():
+            return raw_sequence[:1].upper() + raw_sequence[1:]
+        return raw_sequence
+
+    return _technical_literal_pattern(words, separator_patterns).sub(
+        restore_match,
+        corrected,
+        count=1,
+    )
+
 def _repair_spoken_technical_literals(raw_text: str, corrected: str) -> str:
     """Align spoken separators with matching words in the corrected transcript."""
     for match in _TECH_LITERAL_SEQUENCE_RE.finditer(raw_text):
@@ -1104,22 +1145,27 @@ def _repair_spoken_technical_literals(raw_text: str, corrected: str) -> str:
             words,
             spoken_symbols,
         )
+        if not high_confidence:
+            corrected = _restore_low_confidence_spoken_literal(
+                match,
+                words,
+                spoken_symbols,
+                corrected,
+            )
+            continue
         written_separators = [
             rf"(?:\s*[-_]\s*|{_joined_spoken_symbol_separator(spoken)}|\s+)"
-            if literal in {"-", "_"} and high_confidence
-            else rf"(?:\s*[-_]\s*|{_joined_spoken_symbol_separator(spoken)})"
             if literal in {"-", "_"}
             else rf"\s*{re.escape(literal)}\s*"
             for literal, spoken in zip(literal_symbols, spoken_symbols)
         ]
         corrected = _technical_literal_pattern(words, written_separators).sub(value, corrected)
 
-        if high_confidence:
-            spoken_separators = [
-                rf"\s+(?:{_TECH_SPOKEN_SYMBOL_PATTERN})\s+"
-                for _ in spoken_symbols
-            ]
-            corrected = _technical_literal_pattern(words, spoken_separators).sub(value, corrected)
+        spoken_separators = [
+            rf"\s+(?:{_TECH_SPOKEN_SYMBOL_PATTERN})\s+"
+            for _ in spoken_symbols
+        ]
+        corrected = _technical_literal_pattern(words, spoken_separators).sub(value, corrected)
     return corrected
 
 def _lowercase_joined_technical_literals(text: str) -> str:

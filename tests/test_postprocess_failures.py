@@ -182,9 +182,18 @@ class PostprocessFailureTest(unittest.TestCase):
         self.assertEqual(
             self._postprocess_with_model_output(
                 "la barra baja está mal",
-                "La barra baja está mal.",
+                "La barra_baja está mal.",
             ),
             "La barra baja está mal.",
+        )
+
+    def test_v11_ordinary_english_hyphen_sentence_preserved(self):
+        self.assertEqual(
+            self._postprocess_with_model_output(
+                "the hyphen is wrong",
+                "The-is wrong.",
+            ),
+            "The hyphen is wrong.",
         )
 
 
