@@ -191,7 +191,7 @@ class PostprocessFailureTest(unittest.TestCase):
         self.assertEqual(
             self._postprocess_with_model_output(
                 "the hyphen is wrong",
-                "The-is wrong.",
+                "The hyphen- is wrong.",
             ),
             "The hyphen is wrong.",
         )

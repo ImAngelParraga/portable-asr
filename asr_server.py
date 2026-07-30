@@ -1107,6 +1107,16 @@ def _restore_low_confidence_spoken_literal(
             r"\s+",
         ]
         spoken_words = re.split(r"\s+", spoken.strip())
+        spoken_words_with_spaces = r"\s+".join(
+            re.escape(word)
+            for word in spoken_words
+        )
+        variants.extend(
+            (
+                rf"\s+{spoken_words_with_spaces}\s*{re.escape(literal)}\s+",
+                rf"\s*{re.escape(literal)}\s*{spoken_words_with_spaces}\s+",
+            )
+        )
         if len(spoken_words) > 1:
             joined_words = r"\s*[-_]\s*".join(
                 re.escape(word)
