@@ -134,6 +134,52 @@ class OutputCleanupTest(unittest.TestCase):
             "La barra baja está mal.",
         )
 
+    def test_v11_bilingual_context_cues_reconstruct_single_separator(self):
+        cases = (
+            ("variable", "hyphen"),
+            ("field", "hyphen"),
+            ("identifier", "hyphen"),
+            ("file", "hyphen"),
+            ("filename", "hyphen"),
+            ("name", "hyphen"),
+            ("token", "hyphen"),
+            ("key", "hyphen"),
+            ("column", "hyphen"),
+            ("table", "hyphen"),
+            ("class", "hyphen"),
+            ("function", "hyphen"),
+            ("method", "hyphen"),
+            ("endpoint", "hyphen"),
+            ("folder", "hyphen"),
+            ("directory", "hyphen"),
+            ("path", "hyphen"),
+            ("document", "hyphen"),
+            ("campo", "guion"),
+            ("identificador", "guion"),
+            ("archivo", "guion"),
+            ("fichero", "guion"),
+            ("nombre", "guion"),
+            ("clave", "guion"),
+            ("columna", "guion"),
+            ("tabla", "guion"),
+            ("clase", "guion"),
+            ("función", "guion"),
+            ("método", "guion"),
+            ("carpeta", "guion"),
+            ("directorio", "guion"),
+            ("ruta", "guion"),
+            ("documento", "guion"),
+        )
+        for cue, spoken_separator in cases:
+            with self.subTest(cue=cue):
+                self.assertEqual(
+                    _repair_technical_literal_format(
+                        f"{cue} Alpha {spoken_separator} Beta",
+                        f"{cue} Alpha Beta",
+                    ),
+                    f"{cue} alpha-beta",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -181,12 +181,15 @@ Spoken punctuation and technical literals:
    - colon / dos puntos -> :
    - semicolon / punto y coma -> ;
 15. Reconstruct URLs, emails, file paths, command flags, and identifiers only when the transcript clearly contains a technical literal.
+   Technical-context cues work in both English and Spanish:
+   - English: variable, field, identifier, file, filename, name, token, key, column, table, class, function, method, endpoint, folder, directory, path, document.
+   - Spanish: variable, campo, identificador, archivo, fichero, nombre, token, clave, columna, tabla, clase, función, método, endpoint, carpeta, directorio, ruta, documento.
 16. Inside technical literals, convert spoken symbols to symbols and remove unnecessary spaces:
    - dot / punto -> .
    - slash / barra -> /
    - backslash -> \\
-   - hyphen / dash / guion -> -
-   - underscore / guion bajo -> _
+   - hyphen / dash / guion / guión -> -
+   - underscore / guion bajo / guión bajo / barra baja -> _
    - colon / dos puntos -> :
    - at / arroba -> @
 17. Do not convert these words when they are ordinary words in a sentence.
@@ -241,6 +244,12 @@ Clean: example.com/docs
 
 Raw: user arroba example punto com
 Clean: user@example.com
+
+Raw: la clase Debian guion Developer guion Install
+Clean: La clase debian-developer-install.
+
+Raw: the class Debian underscore Developer underscore Install
+Clean: The class debian_developer_install.
 
 Raw: I drew a dot on the paper
 Clean: I drew a dot on the paper.
@@ -1003,6 +1012,12 @@ _TECH_SPOKEN_SYMBOL_PATTERN = (
     r"hyphen|dash|guion|guión|"
     r"dot|punto|slash|barra|backslash|colon|dos\s+puntos|at|arroba"
 )
+_TECHNICAL_CUE_PATTERN = (
+    r"variable|field|campo|identifier|identificador|file|archivo|fichero|"
+    r"filename|name|nombre|token|key|clave|column|columna|table|tabla|"
+    r"class|clase|function|función|funcion|method|método|metodo|endpoint|"
+    r"folder|carpeta|directory|directorio|path|ruta|document|documento"
+)
 _TECH_LITERAL_SEQUENCE_RE = re.compile(
     rf"(?<!\w){_TECH_TOKEN_PATTERN}(?:\s+(?:{_TECH_SPOKEN_SYMBOL_PATTERN})\s+{_TECH_TOKEN_PATTERN})+(?!\w)",
     re.IGNORECASE,
@@ -1071,9 +1086,8 @@ def _spoken_literal_is_high_confidence(
         return True
     return bool(
         re.search(
-            r"(?i)\b(?:variable|campo|identificador|archivo|fichero|nombre|token|clave|"
-            r"columna|tabla|función|funcion|método|metodo|endpoint)\s*"
-            r"(?:es|llamad[oa]|denominad[oa])?\s*$",
+            rf"(?i)\b(?:{_TECHNICAL_CUE_PATTERN})\b"
+            r"(?:\s+(?:is|called|named|es|llamad[oa]|denominad[oa]))?\s*$",
             raw_text[:match.start()],
         )
     )
@@ -1084,15 +1098,23 @@ def _repair_spoken_technical_literals(raw_text: str, corrected: str) -> str:
         words, spoken_symbols = _technical_literal_parts(match.group(0))
         value = _technical_literal_value(words, spoken_symbols)
         literal_symbols = [_spoken_symbol_to_literal(symbol) for symbol in spoken_symbols]
+        high_confidence = _spoken_literal_is_high_confidence(
+            raw_text,
+            match,
+            words,
+            spoken_symbols,
+        )
         written_separators = [
-            rf"(?:\s*[-_]\s*|{_joined_spoken_symbol_separator(spoken)})"
+            rf"(?:\s*[-_]\s*|{_joined_spoken_symbol_separator(spoken)}|\s+)"
+            if literal in {"-", "_"} and high_confidence
+            else rf"(?:\s*[-_]\s*|{_joined_spoken_symbol_separator(spoken)})"
             if literal in {"-", "_"}
             else rf"\s*{re.escape(literal)}\s*"
             for literal, spoken in zip(literal_symbols, spoken_symbols)
         ]
         corrected = _technical_literal_pattern(words, written_separators).sub(value, corrected)
 
-        if _spoken_literal_is_high_confidence(raw_text, match, words, spoken_symbols):
+        if high_confidence:
             spoken_separators = [
                 rf"\s+(?:{_TECH_SPOKEN_SYMBOL_PATTERN})\s+"
                 for _ in spoken_symbols
@@ -1163,7 +1185,7 @@ def _normalized_word_tokens(text: str) -> list[str]:
 def _meaningful_order_tokens(text: str) -> list[str]:
     text = _normalized_plain_text(text)
     text = re.sub(
-        r"\b(full stop|question mark|signo de interrogacion|guion bajo|"
+        r"\b(full stop|question mark|signo de interrogacion|(?:guion|barra) baj[ao]|"
         r"dos puntos|abre interrogacion|cierra interrogacion)\b",
         " ",
         text,
