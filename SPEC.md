@@ -31,6 +31,8 @@ V8: Existing transcription clients sending only current OpenAI-compatible fields
 V9: Tokens, prompts, vocabulary context, and transcript bodies are absent from default logs; diagnostics contain lengths/timings/status only.
 V10: Spoken technical separators align only matching raw/corrected word sequences, accept Unicode letters/digits, preserve unrelated separators, and lowercase joined identifiers.
 V11: Clear Spanish and English technical cues reconstruct spoken hyphen and underscore commands through the full cleanup pipeline, including space-only LLM output, while ordinary-language uses remain unchanged.
+V12: Valid bilingual list controls format Markdown without inventing a title: `lista de ítems` / `item list` creates bullets; `lista numerada` / `numbered list` creates numbering; `nuevo ítem` / `new item` separates either type; the immediately preceding clause is preserved as an introduction with an implicit colon.
+V13: List formatting preserves source language plus every item's content, quantity, and order; control phrases disappear only in valid list context, ordinary-language uses remain prose, and comma-separated items are inferred only for clear enumerations.
 
 §T
 id|status|task|detail|cites
@@ -40,6 +42,7 @@ T3|.|Unified cleanup pipeline|Use one internal cleanup path for audio and text e
 T4|.|Translation contract|Implement and document `POST /v1/audio/translations` for English or explicitly version arbitrary-target extension; keep translation disabled absent explicit request; test auth, language behavior, timeout, and failures.|I.translate,V1,V2,V7,V8
 T5|.|Compatibility matrix|Test legacy transcription request, language hint, prompt context, post-processing disabled/enabled/unavailable, and explicit translation without GPU/network/live models.|C7,V1,V2,V3,V6,V7,V8
 T6|x|Bilingual technical separators|Add symmetric Spanish/English technical cues, recover spoken hyphens/underscores from space-only cleanup output, and preserve ordinary-language uses.|I.postprocess,C3,C7,V10,V11
+T7|x|Bilingual formatted lists|Add explicit bullet/numbered list controls, shared item separator, implicit introduction colon, conservative comma inference, output validation, and offline bilingual regression tests.|I.postprocess,C3,C7,V12,V13
 
 §B
 id|date|cause|fix

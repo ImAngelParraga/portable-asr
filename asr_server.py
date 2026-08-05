@@ -172,6 +172,18 @@ Paragraphing rules:
 12. Start a new paragraph when the speaker moves to an unrelated aside, even without an explicit transition phrase.
 13. Start a new paragraph at clear transition phrases such as "dicho esto", "ahora cambio de tema", "cambiando de tema", "por otro lado", "por cierto", or "en otro orden de cosas".
 
+List formatting control rules:
+- Treat `lista de ítems` / `item list` / `list of items` as a bulleted-list control only when followed by at least two clear items.
+- Treat `lista numerada` / `numbered list` as a numbered-list control only when followed by at least two clear items.
+- In either list type, `nuevo ítem` / `new item` starts the next item.
+- `fin de lista` / `end of list` ends the list; preserve following speech as normal prose.
+- Remove recognized list control phrases from the output.
+- Preserve the clause immediately before the list control as the introduction and add an implicit colon. Do not invent a title when there is no introduction.
+- Preserve every item's language, content, quantity, and order. Never combine, split, reorder, omit, or invent items.
+- Clear comma-separated short items may become separate items. If commas belong inside an item or the enumeration is uncertain, preserve them inside the item.
+- Use Markdown `- ` markers for bulleted lists and sequential `1. `, `2. ` markers for numbered lists.
+- Do not treat ordinary-language mentions such as `una lista de ítems defectuosos` or `we discussed an item list` as controls.
+
 Spoken punctuation and technical literals:
 14. Replace spoken punctuation commands with symbols when they are clearly commands:
    - period / full stop / punto -> .
@@ -250,6 +262,18 @@ Clean: La clase debian-developer-install.
 
 Raw: the class Debian underscore Developer underscore Install
 Clean: The class debian_developer_install.
+
+Raw: hoy tengo que comprar lista de items plátanos, tomates
+Clean: Hoy tengo que comprar:
+
+- Plátanos
+- Tomates
+
+Raw: deployment steps numbered list run tests new item copy the file
+Clean: Deployment steps:
+
+1. Run tests
+2. Copy the file
 
 Raw: I drew a dot on the paper
 Clean: I drew a dot on the paper.
@@ -1238,6 +1262,99 @@ def _normalized_word_tokens(text: str) -> list[str]:
     """Return normalized word tokens."""
     return re.findall(r"[a-z0-9]+", _normalized_plain_text(text))
 
+_LIST_TRIGGER_RE = re.compile(
+    r"(?P<numbered>\b(?:lista\s+numerada|numbered\s+list)\b)|"
+    r"(?P<bulleted>\b(?:lista\s+de\s+[íi]tems?|item\s+list|list\s+of\s+items?)\b)",
+    re.IGNORECASE,
+)
+_LIST_ITEM_SEPARATOR_RE = re.compile(
+    r"\b(?:nuevo\s+[íi]tem|new\s+item)\b",
+    re.IGNORECASE,
+)
+_LIST_END_RE = re.compile(
+    r"\b(?:fin\s+de\s+(?:la\s+)?lista|end\s+of\s+(?:the\s+)?list)\b",
+    re.IGNORECASE,
+)
+_FORMATTED_LIST_LINE_RE = re.compile(
+    r"^\s*(?P<marker>[-*+]|\d+[.)])\s+(?P<content>\S.*)$",
+    re.MULTILINE,
+)
+
+def _clear_comma_list_items(body: str) -> list[str] | None:
+    """Return conservative comma-separated items, or None for prose-like text."""
+    parts = [part.strip() for part in re.split(r"\s*,\s*", body)]
+    if len(parts) < 2 or any(not part for part in parts):
+        return None
+    clause_starters = {
+        "although", "because", "but", "if", "that", "when", "which", "while",
+        "aunque", "pero", "porque", "que", "cuando", "mientras", "si",
+    }
+    for part in parts:
+        words = _normalized_word_tokens(part)
+        if not words or len(words) > 8 or words[0] in clause_starters:
+            return None
+        if re.search(r"[.!?¡¿]", part[:-1]):
+            return None
+    return parts
+
+def _list_control_parts(text: str) -> tuple[str, str, list[str], str] | None:
+    """Parse one valid bilingual list-control region from text."""
+    trigger = _LIST_TRIGGER_RE.search(text)
+    if trigger is None:
+        return None
+    mode = "numbered" if trigger.group("numbered") else "bulleted"
+    prefix = text[:trigger.start()].strip()
+    remainder = text[trigger.end():]
+    end = _LIST_END_RE.search(remainder)
+    if end is None:
+        body = remainder
+        tail = ""
+    else:
+        body = remainder[:end.start()]
+        tail = remainder[end.end():].strip(" \t\r\n,;:.-–—")
+    body = body.strip(" \t\r\n,;:-–—")
+    if not body:
+        return None
+
+    if _LIST_ITEM_SEPARATOR_RE.search(body):
+        items = [
+            part.strip(" \t\r\n,;")
+            for part in _LIST_ITEM_SEPARATOR_RE.split(body)
+        ]
+        if len(items) < 2 or any(not item for item in items):
+            return None
+    else:
+        items = _clear_comma_list_items(body)
+        if items is None:
+            return None
+    return mode, prefix, items, tail
+
+def _list_introduction(prefix: str) -> str:
+    """Add an implicit colon to a spoken list introduction."""
+    prefix = prefix.strip()
+    if not prefix:
+        return ""
+    if prefix.endswith(("?", "!", "¿", "¡")):
+        return prefix
+    prefix = re.sub(r"[\s,;:.\-–—]+$", "", prefix)
+    return f"{prefix}:" if prefix else ""
+
+def _prepare_formatted_list_transcript(text: str) -> str:
+    """Convert valid bilingual list controls into deterministic Markdown."""
+    parsed = _list_control_parts(text)
+    if parsed is None:
+        return text
+    mode, prefix, items, tail = parsed
+    if mode == "bulleted":
+        list_text = "\n".join(f"- {item}" for item in items)
+    else:
+        list_text = "\n".join(
+            f"{index}. {item}" for index, item in enumerate(items, start=1)
+        )
+    introduction = _list_introduction(prefix)
+    sections = [section for section in (introduction, list_text, tail) if section]
+    return "\n\n".join(sections)
+
 def _meaningful_order_tokens(text: str) -> list[str]:
     text = _normalized_plain_text(text)
     text = re.sub(
@@ -1271,6 +1388,57 @@ def _lcs_length(left: list[str], right: list[str]) -> int:
                 current.append(max(previous[index], current[-1]))
         previous = current
     return previous[-1]
+
+def _formatted_list_items(text: str, mode: str) -> list[str] | None:
+    """Extract items only when Markdown markers match requested list type."""
+    matches = list(_FORMATTED_LIST_LINE_RE.finditer(text))
+    if len(matches) < 2:
+        return None
+    markers = [match.group("marker") for match in matches]
+    if mode == "bulleted":
+        if any(marker[0].isdigit() for marker in markers):
+            return None
+    else:
+        if any(not marker[0].isdigit() for marker in markers):
+            return None
+        numbers = [int(re.match(r"\d+", marker).group(0)) for marker in markers]
+        if numbers != list(range(1, len(numbers) + 1)):
+            return None
+    return [match.group("content").strip() for match in matches]
+
+def _protect_formatted_list_rewrite(raw_text: str, prepared_text: str, corrected: str) -> str:
+    """Reject list output that loses, invents, reorders, or restyles items."""
+    if prepared_text == raw_text:
+        return corrected
+    parsed = _list_control_parts(raw_text)
+    if parsed is None:
+        return corrected
+    mode = parsed[0]
+    expected_items = _formatted_list_items(prepared_text, mode)
+    corrected_items = _formatted_list_items(corrected, mode)
+    if expected_items is None or corrected_items is None or len(expected_items) != len(corrected_items):
+        print("[asr] post-processing changed formatted list structure; returning prepared list")
+        return prepared_text
+
+    expected_item_tokens = _normalized_word_tokens(" ".join(expected_items))
+    corrected_item_tokens = _normalized_word_tokens(" ".join(corrected_items))
+    item_lcs = _lcs_length(expected_item_tokens, corrected_item_tokens)
+    expected_ratio = item_lcs / max(1, len(expected_item_tokens))
+    corrected_ratio = item_lcs / max(1, len(corrected_item_tokens))
+    if expected_ratio < 0.8 or corrected_ratio < 0.8:
+        print("[asr] post-processing changed formatted list content/order; returning prepared list")
+        return prepared_text
+
+    prepared_tokens = _meaningful_order_tokens(prepared_text)
+    corrected_tokens = _meaningful_order_tokens(corrected)
+    overall_lcs = _lcs_length(prepared_tokens, corrected_tokens)
+    if (
+        overall_lcs / max(1, len(prepared_tokens)) < 0.8
+        or overall_lcs / max(1, len(corrected_tokens)) < 0.8
+    ):
+        print("[asr] post-processing changed formatted list context; returning prepared list")
+        return prepared_text
+    return corrected
 
 def _protect_meaningful_order_rewrite(raw_text: str, corrected: str) -> str:
     """Reject broad rewrites that reorder or replace too many meaningful words."""
@@ -1421,8 +1589,9 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
+    prepared_text = _prepare_formatted_list_transcript(raw_text)
     system_prompt = instruction.strip() if instruction and instruction.strip() else DEFAULT_POSTPROCESS_PROMPT
-    user_prompt = raw_text if direct_prompt else f"Raw transcript:\n{raw_text}\n\nCorrected transcript:"
+    user_prompt = prepared_text if direct_prompt else f"Raw transcript:\n{prepared_text}\n\nCorrected transcript:"
     max_tokens = max(64, min(4096, len(raw_text) // 2 + 128))
     try:
         result = _llm_chat(
@@ -1467,8 +1636,9 @@ def _postprocess_transcript(
     corrected = _repair_technical_literal_format(raw_text, corrected)
     corrected = re.sub(r'([?.!,;:])\1{3,}', r'\1', corrected)
     corrected = re.sub(r'\s+([?.!,;:])', r'\1', corrected)
+    corrected = _protect_formatted_list_rewrite(raw_text, prepared_text, corrected)
     corrected = _protect_spanish_diminutive_rewrite(raw_text, corrected)
-    corrected = _protect_meaningful_order_rewrite(raw_text, corrected)
+    corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
     corrected = _protect_spanish_pronoun_rewrite(raw_text, corrected)
     corrected = _protect_spanish_discourse_marker_rewrite(raw_text, corrected)
     _log_llm_postprocess_timing(result, raw_text, corrected)

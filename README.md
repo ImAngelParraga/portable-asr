@@ -57,6 +57,26 @@ curl -sS \
 
 Keep prompts short and in the same language as the audio. Long or unrelated prompts can bias Whisper toward hallucinated words.
 
+## Spoken Formatted Lists
+
+When post-processing is enabled, bilingual voice controls can create Markdown lists:
+
+- `lista de ítems` / `item list`: start a bulleted list.
+- `lista numerada` / `numbered list`: start a numbered list.
+- `nuevo ítem` / `new item`: start the next item in either list type.
+- `fin de lista` / `end of list`: optionally end the list before continuing with normal prose.
+
+The clause before the list control becomes the introduction with an implicit colon. For example, `hoy tengo que comprar lista de ítems plátanos nuevo ítem tomates` becomes:
+
+```markdown
+Hoy tengo que comprar:
+
+- Plátanos
+- Tomates
+```
+
+Clear comma-separated short items also work. Use `nuevo ítem` / `new item` when an item contains commas or item boundaries could be ambiguous.
+
 ## Configuration Profiles
 
 Start from one profile and copy it to your runtime env file:
