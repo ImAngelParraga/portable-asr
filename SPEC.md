@@ -42,6 +42,7 @@ V14: Cleanup rejects substantial word replacement for every nonempty transcript,
 V15: Enabled Qwen selector routes audio to resident Qwen worker; `language` and bounded `prompt` reach Qwen language/context inputs, Qwen stays loaded beside Whisper, and disabled selector returns 400.
 V16: Qwen worker inherits device/cache configuration but never inherits Whisper's `LD_LIBRARY_PATH`; PyTorch resolves its own compatible CUDA/cuDNN libraries.
 V17: ASR catalog lists Whisper and only enabled optional transcription engines, using their configured IDs; it excludes the cleanup LLM, requires bearer auth, and does not load models.
+V18: GPU arbitration recognizes resident Whisper and Qwen workers as service-owned processes; neither blocks cleanup LLM startup after transcription, while unrelated GPU jobs remain external.
 
 §T
 id|status|task|detail|cites
@@ -61,3 +62,4 @@ B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-
 B2|2026-07-30|Prompt omitted `barra baja`; technical cues lacked bilingual symmetry; repair missed space-only LLM output; safety guard counted `baja` as content|V11
 B3|2026-09-23|Meaningful-word guard skipped phrases shorter than four words, allowing cleanup to translate short English transcripts; applying guard before Spanish marker restoration dropped valid punctuation|V14
 B4|2026-09-23|Qwen worker inherited Whisper's cuDNN library path and failed GPU inference with `GET was unable to find an engine to execute this computation`|V16
+B5|2026-09-23|GPU arbitration exempted the resident Whisper worker but classified the resident Qwen worker as external; required cleanup could not start after Qwen transcription and returned HTTP 500|V18

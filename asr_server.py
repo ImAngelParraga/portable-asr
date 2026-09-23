@@ -418,12 +418,16 @@ def _external_gpu_users() -> list[tuple[int, str, str]]:
     llama_pids = _llm_server_processes()
     own_pid = os.getpid()
     whisper_pid = None
+    qwen_pid = None
     with _whisper_worker_lock:
         if _whisper_worker_process is not None and _whisper_worker_process.poll() is None:
             whisper_pid = _whisper_worker_process.pid
+    with _qwen_worker_lock:
+        if _qwen_worker_process is not None and _qwen_worker_process.poll() is None:
+            qwen_pid = _qwen_worker_process.pid
     external = []
     for pid, name, memory in _gpu_compute_apps():
-        if pid in llama_pids or pid == own_pid or pid == whisper_pid:
+        if pid in llama_pids or pid in (own_pid, whisper_pid, qwen_pid):
             continue
         external.append((pid, name, memory))
     return external

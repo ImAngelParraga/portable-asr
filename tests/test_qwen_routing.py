@@ -73,6 +73,20 @@ class QwenRoutingTest(unittest.TestCase):
         self.assertNotIn("LD_LIBRARY_PATH", worker_env)
         self.assertEqual(worker_env["CUDA_VISIBLE_DEVICES"], "qwen-gpu")
 
+    def test_owned_qwen_worker_does_not_block_cleanup_llm_start(self):
+        qwen_process = SimpleNamespace(pid=123, poll=lambda: None)
+        with (
+            patch.object(asr_server, "_qwen_worker_process", qwen_process),
+            patch.object(asr_server, "_whisper_worker_process", None),
+            patch.object(asr_server, "_llm_server_processes", return_value=set()),
+            patch.object(asr_server, "_gpu_compute_apps", return_value=[
+                (123, "qwen_asr_worker.py", "4656 MiB"),
+                (456, "unrelated_gpu_job", "1000 MiB"),
+            ]),
+        ):
+            external = asr_server._external_gpu_users()
+        self.assertEqual(external, [(456, "unrelated_gpu_job", "1000 MiB")])
+
     def test_endpoint_routes_qwen_and_preserves_context(self):
         received = {}
 
