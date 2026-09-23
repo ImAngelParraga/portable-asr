@@ -163,6 +163,8 @@ UUIDs are useful on systems where device order may change. Use placeholder examp
 
 Qwen3-ASR can run beside resident Whisper in a separate Python worker. Keep the base ASR environment unchanged. Create a separate environment with `qwen-asr==0.0.6` and a PyTorch CUDA wheel compatible with your GPU. Older Pascal/Volta GPUs require the CUDA 12.6 PyTorch wheel; see [PyTorch installation guidance](https://pytorch.org/get-started/locally/).
 
+Install the `ffmpeg` command on the service host. The Qwen worker decodes uploads, including OpenVoiceIME's AAC/M4A recordings, to temporary mono 16 kHz PCM WAV before inference. Decoded files are removed after each request; the Whisper path is unchanged.
+
 ```bash
 python3 -m venv /opt/asr-qwen/venv
 /opt/asr-qwen/venv/bin/pip install --index-url https://download.pytorch.org/whl/cu126 'torch==2.12.1+cu126'

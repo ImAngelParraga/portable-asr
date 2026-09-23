@@ -43,6 +43,7 @@ V15: Enabled Qwen selector routes audio to resident Qwen worker; `language` and 
 V16: Qwen worker inherits device/cache configuration but never inherits Whisper's `LD_LIBRARY_PATH`; PyTorch resolves its own compatible CUDA/cuDNN libraries.
 V17: ASR catalog lists Whisper and only enabled optional transcription engines, using their configured IDs; it excludes the cleanup LLM, requires bearer auth, and does not load models.
 V18: GPU arbitration recognizes resident Whisper and Qwen workers as service-owned processes; neither blocks cleanup LLM startup after transcription, while unrelated GPU jobs remain external.
+V19: Qwen decodes accepted AAC/M4A and WAV uploads to mono 16 kHz PCM WAV before model inference, keeps decoded audio only for that request, and never calls the model after decoder failure; Whisper routing is unchanged.
 
 §T
 id|status|task|detail|cites
@@ -55,6 +56,7 @@ T6|x|Bilingual technical separators|Add symmetric Spanish/English technical cues
 T7|x|Bilingual formatted lists|Add explicit bullet/numbered list controls, shared item separator, implicit introduction colon, conservative comma inference, output validation, and offline bilingual regression tests.|I.postprocess,C3,C7,V12,V13
 T8|x|Optional Qwen3-ASR engine|Route model selector to resident Qwen worker, forward language/context, preserve Whisper default, document isolated runtime and verify on host.|I.models,C8,V15
 T9|x|ASR model catalog|Expose authenticated ASR-only model IDs so clients discover enabled engines without hardcoded choices.|I.catalog,G4,V17
+T10|x|Decode Qwen client audio|Normalize uploaded AAC/M4A and WAV through FFmpeg before Qwen inference, remove temporary PCM after each request, and cover failure without GPU or model downloads.|I.transcribe,I.models,V19
 
 §B
 id|date|cause|fix
@@ -63,3 +65,4 @@ B2|2026-07-30|Prompt omitted `barra baja`; technical cues lacked bilingual symme
 B3|2026-09-23|Meaningful-word guard skipped phrases shorter than four words, allowing cleanup to translate short English transcripts; applying guard before Spanish marker restoration dropped valid punctuation|V14
 B4|2026-09-23|Qwen worker inherited Whisper's cuDNN library path and failed GPU inference with `GET was unable to find an engine to execute this computation`|V16
 B5|2026-09-23|GPU arbitration exempted the resident Whisper worker but classified the resident Qwen worker as external; required cleanup could not start after Qwen transcription and returned HTTP 500|V18
+B6|2026-09-23|Qwen forwarded Android AAC/M4A to librosa 1.0 and libsndfile, which cannot decode that container and raised LibsndfileError|V19

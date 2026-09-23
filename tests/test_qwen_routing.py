@@ -1,7 +1,9 @@
 import unittest
 import os
+import subprocess
+from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 
@@ -43,6 +45,56 @@ class QwenRoutingTest(unittest.TestCase):
         self.assertEqual(qwen_asr_worker.qwen_language("en"), "English")
         self.assertEqual(qwen_asr_worker.qwen_language("es"), "Spanish")
         self.assertIsNone(qwen_asr_worker.qwen_language("auto"))
+
+    def test_v19_qwen_decodes_m4a_before_model_inference(self):
+        seen = {}
+
+        def fake_decode(source_path, output_path):
+            seen["source"] = source_path
+            Path(output_path).write_bytes(b"RIFF-test")
+
+        def fake_transcribe(*, audio, language, context):
+            seen.update(audio=audio, language=language, context=context)
+            self.assertEqual(Path(audio).suffix, ".wav")
+            self.assertTrue(Path(audio).is_file())
+            return [SimpleNamespace(text="Hello")]
+
+        model = SimpleNamespace(transcribe=fake_transcribe)
+        with patch.object(qwen_asr_worker, "decode_audio_to_wav", side_effect=fake_decode):
+            segments = qwen_asr_worker.transcribe_request(
+                model, {"audio_path": "/tmp/recording.m4a", "language": "en", "prompt": "term"}
+            )
+
+        self.assertEqual(segments, ["Hello"])
+        self.assertEqual(seen["source"], "/tmp/recording.m4a")
+        self.assertEqual(seen["language"], "English")
+        self.assertEqual(seen["context"], "term")
+        self.assertFalse(Path(seen["audio"]).exists())
+
+    def test_v19_qwen_decoder_rejects_bad_audio_before_model_inference(self):
+        model = SimpleNamespace(transcribe=Mock())
+        with patch.object(
+            qwen_asr_worker,
+            "decode_audio_to_wav",
+            side_effect=subprocess.CalledProcessError(1, ["ffmpeg"]),
+        ):
+            with self.assertRaises(subprocess.CalledProcessError):
+                qwen_asr_worker.transcribe_request(model, {"audio_path": "/tmp/bad.m4a"})
+        model.transcribe.assert_not_called()
+
+    def test_v19_qwen_decode_uses_mono_16k_wav_command(self):
+        with patch.object(qwen_asr_worker.subprocess, "run") as run:
+            qwen_asr_worker.decode_audio_to_wav("/tmp/input.m4a", "/tmp/output.wav")
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], "ffmpeg")
+        self.assertIn("-nostdin", command)
+        self.assertIn("-vn", command)
+        self.assertEqual(command[command.index("-i") + 1], "/tmp/input.m4a")
+        self.assertEqual(command[command.index("-ac") + 1], "1")
+        self.assertEqual(command[command.index("-ar") + 1], "16000")
+        self.assertEqual(command[command.index("-c:a") + 1], "pcm_s16le")
+        self.assertEqual(command[-1], "/tmp/output.wav")
+        self.assertTrue(run.call_args.kwargs["check"])
 
     def test_legacy_model_names_still_use_whisper(self):
         with patch.object(asr_server, "ASR_QWEN_ENABLED", True):
