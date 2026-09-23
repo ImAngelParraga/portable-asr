@@ -1,4 +1,6 @@
 import unittest
+import os
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -25,6 +27,22 @@ class QwenRoutingTest(unittest.TestCase):
             with self.assertRaises(asr_server.HTTPException) as raised:
                 asr_server._transcription_engine("qwen3-asr-1.7b")
         self.assertEqual(raised.exception.status_code, 400)
+
+    def test_qwen_worker_ignores_whisper_library_path(self):
+        fake_process = SimpleNamespace(pid=123, poll=lambda: None)
+        with (
+            patch.dict(os.environ, {"LD_LIBRARY_PATH": "/whisper/cudnn"}),
+            patch.object(asr_server, "ASR_QWEN_CUDA_VISIBLE_DEVICES", "qwen-gpu"),
+            patch.object(asr_server.subprocess, "Popen", return_value=fake_process) as popen,
+        ):
+            asr_server._qwen_worker_process = None
+            try:
+                asr_server._start_qwen_worker_locked()
+            finally:
+                asr_server._qwen_worker_process = None
+        worker_env = popen.call_args.kwargs["env"]
+        self.assertNotIn("LD_LIBRARY_PATH", worker_env)
+        self.assertEqual(worker_env["CUDA_VISIBLE_DEVICES"], "qwen-gpu")
 
     def test_endpoint_routes_qwen_and_preserves_context(self):
         received = {}

@@ -38,6 +38,7 @@ V12: Valid bilingual list controls format Markdown without inventing a title: `l
 V13: List formatting preserves source language plus every item's content, quantity, and order; control phrases disappear only in valid list context, ordinary-language uses remain prose, and comma-separated items are inferred only for clear enumerations.
 V14: Cleanup rejects substantial word replacement for every nonempty transcript, including one-to-three-word phrases; existing punctuation, technical-literal, and Spanish marker repairs still pass.
 V15: Enabled Qwen selector routes audio to resident Qwen worker; `language` and bounded `prompt` reach Qwen language/context inputs, Qwen stays loaded beside Whisper, and disabled selector returns 400.
+V16: Qwen worker inherits device/cache configuration but never inherits Whisper's `LD_LIBRARY_PATH`; PyTorch resolves its own compatible CUDA/cuDNN libraries.
 
 §T
 id|status|task|detail|cites
@@ -55,3 +56,4 @@ id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
 B2|2026-07-30|Prompt omitted `barra baja`; technical cues lacked bilingual symmetry; repair missed space-only LLM output; safety guard counted `baja` as content|V11
 B3|2026-09-23|Meaningful-word guard skipped phrases shorter than four words, allowing cleanup to translate short English transcripts; applying guard before Spanish marker restoration dropped valid punctuation|V14
+B4|2026-09-23|Qwen worker inherited Whisper's cuDNN library path and failed GPU inference with `GET was unable to find an engine to execute this computation`|V16

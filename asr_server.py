@@ -958,6 +958,8 @@ def _start_qwen_worker_locked():
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     env.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    # The service unit may pin Whisper's cuDNN libraries; PyTorch uses its own CUDA wheel.
+    env.pop("LD_LIBRARY_PATH", None)
     device = ASR_QWEN_CUDA_VISIBLE_DEVICES or ASR_WHISPER_CUDA_VISIBLE_DEVICES
     if device:
         env["CUDA_VISIBLE_DEVICES"] = device
