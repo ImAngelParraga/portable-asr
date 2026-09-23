@@ -10,6 +10,35 @@ import qwen_asr_worker
 
 
 class QwenRoutingTest(unittest.TestCase):
+    def test_audio_model_catalog_lists_only_enabled_transcription_models(self):
+        with (
+            patch.object(asr_server, "ASR_BEARER_TOKEN", "test-token"),
+            patch.object(asr_server, "ASR_QWEN_ENABLED", True),
+            patch.object(asr_server, "ASR_QWEN_MODEL_ID", "future-qwen-id"),
+            patch.object(asr_server, "ASR_POSTPROCESS_MODEL", "cleanup-only"),
+        ):
+            response = TestClient(asr_server.app).get(
+                "/v1/audio/models", headers={"Authorization": "Bearer test-token"}
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["object"], "list")
+        self.assertEqual(
+            [model["id"] for model in response.json()["data"]],
+            ["whisper-1", "future-qwen-id"],
+        )
+
+    def test_audio_model_catalog_is_authenticated_and_hides_disabled_qwen(self):
+        with (
+            patch.object(asr_server, "ASR_BEARER_TOKEN", "test-token"),
+            patch.object(asr_server, "ASR_QWEN_ENABLED", False),
+        ):
+            client = TestClient(asr_server.app)
+            self.assertEqual(client.get("/v1/audio/models").status_code, 401)
+            response = client.get(
+                "/v1/audio/models", headers={"Authorization": "Bearer test-token"}
+            )
+        self.assertEqual([model["id"] for model in response.json()["data"]], ["whisper-1"])
+
     def test_qwen_language_converts_openai_codes(self):
         self.assertEqual(qwen_asr_worker.qwen_language("en"), "English")
         self.assertEqual(qwen_asr_worker.qwen_language("es"), "Spanish")

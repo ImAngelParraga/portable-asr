@@ -4,6 +4,7 @@
 G1: Make ASR service sole owner of transcription semantics: vocabulary biasing, cleanup, filler handling, correction, and optional translation.
 G2: Return final semantic transcript from audio endpoint so thin clients only present/insert received text.
 G3: Select Whisper or optional Qwen3-ASR per request through existing OpenAI-compatible `model` field.
+G4: Advertise currently enabled transcription models to clients without exposing the cleanup LLM as an ASR choice.
 
 §C
 C1: Keep `POST /v1/audio/transcriptions` OpenAI-compatible for existing clients.
@@ -21,6 +22,7 @@ I.translate: Add explicit translation API contract before enabling client contro
 I.postprocess: `POST /v1/text/postprocess` and `POST /v1/chat/completions` expose service cleanup directly; audio endpoint may invoke same internal pipeline.
 I.config: `ASR_POSTPROCESS_*` owns provider/model/token/timeout/prompt/failure policy; clients never receive these secrets.
 I.models: `model=qwen3-asr-1.7b` selects resident Qwen3-ASR when `ASR_QWEN_ENABLED=1`; all other legacy model values select Whisper. `ASR_QWEN_*` configures checkpoint, interpreter, and GPU placement.
+I.catalog: Authenticated `GET /v1/audio/models` lists transcription model IDs in OpenAI list format; `GET /v1/models` keeps its broader compatibility catalog.
 
 §V
 V1: Audio processing order is fixed and tested: validate request → transcribe with optional `language`/`prompt` context → optional conservative cleanup → optional explicitly requested translation → response.
@@ -39,6 +41,7 @@ V13: List formatting preserves source language plus every item's content, quanti
 V14: Cleanup rejects substantial word replacement for every nonempty transcript, including one-to-three-word phrases; existing punctuation, technical-literal, and Spanish marker repairs still pass.
 V15: Enabled Qwen selector routes audio to resident Qwen worker; `language` and bounded `prompt` reach Qwen language/context inputs, Qwen stays loaded beside Whisper, and disabled selector returns 400.
 V16: Qwen worker inherits device/cache configuration but never inherits Whisper's `LD_LIBRARY_PATH`; PyTorch resolves its own compatible CUDA/cuDNN libraries.
+V17: ASR catalog lists Whisper and only enabled optional transcription engines, using their configured IDs; it excludes the cleanup LLM, requires bearer auth, and does not load models.
 
 §T
 id|status|task|detail|cites
@@ -50,6 +53,7 @@ T5|.|Compatibility matrix|Test legacy transcription request, language hint, prom
 T6|x|Bilingual technical separators|Add symmetric Spanish/English technical cues, recover spoken hyphens/underscores from space-only cleanup output, and preserve ordinary-language uses.|I.postprocess,C3,C7,V10,V11
 T7|x|Bilingual formatted lists|Add explicit bullet/numbered list controls, shared item separator, implicit introduction colon, conservative comma inference, output validation, and offline bilingual regression tests.|I.postprocess,C3,C7,V12,V13
 T8|x|Optional Qwen3-ASR engine|Route model selector to resident Qwen worker, forward language/context, preserve Whisper default, document isolated runtime and verify on host.|I.models,C8,V15
+T9|x|ASR model catalog|Expose authenticated ASR-only model IDs so clients discover enabled engines without hardcoded choices.|I.catalog,G4,V17
 
 §B
 id|date|cause|fix

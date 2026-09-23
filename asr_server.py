@@ -1805,6 +1805,16 @@ async def models(token: str = Depends(verify_token)):
         "data": [{"id": model_id, "object": "model", "owned_by": "local"} for model_id in model_ids],
     }
 
+@app.get("/v1/audio/models")
+async def audio_models(token: str = Depends(verify_token)):
+    model_ids = ["whisper-1"]
+    if ASR_QWEN_ENABLED:
+        model_ids.append(ASR_QWEN_MODEL_ID)
+    return {
+        "object": "list",
+        "data": [{"id": model_id, "object": "model", "owned_by": "local"} for model_id in model_ids],
+    }
+
 @app.post("/v1/text/postprocess")
 async def text_postprocess(payload: PostprocessRequest, token: str = Depends(verify_token)):
     try:

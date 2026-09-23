@@ -180,6 +180,8 @@ ASR_QWEN_CUDA_VISIBLE_DEVICES=0
 
 Send `model=qwen3-asr-1.7b` to `/v1/audio/transcriptions` to use Qwen. Existing model values continue to use Whisper. The Qwen worker starts on first Qwen request and remains loaded; allow extra time for first model download/load, or pre-download the checkpoint. `language=en` and `language=es` map to Qwen's forced-language names, while omitted language uses automatic detection. Multipart `prompt` becomes Qwen request context. Same authentication and optional transcript cleanup apply to both engines. Use OpenVoiceDesktop's ASR **Model** field or OpenVoiceIME's custom-provider **Model** field to select Qwen for that app.
 
+`GET /v1/audio/models` returns the currently enabled transcription model IDs in OpenAI list format. It requires the same bearer token as transcription requests and does not include the cleanup LLM. Clients can refresh this list when settings open or the endpoint changes; `GET /v1/models` remains the broader compatibility catalog.
+
 ## Optional Post-Processing
 
 Post-processing cleans punctuation, casing, paragraph breaks, and clear ASR artifacts while preserving meaning and language. It is disabled in the CPU profile.
