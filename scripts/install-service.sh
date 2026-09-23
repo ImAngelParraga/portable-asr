@@ -21,6 +21,7 @@ log() { echo "[$(date '+%H:%M:%S')] $*"; }
 
 install -d -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${ASR_DIR}"
 install -m 755 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/asr_server.py" "${ASR_DIR}/asr_server.py"
+install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/qwen_asr_worker.py" "${ASR_DIR}/qwen_asr_worker.py"
 install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/requirements.txt" "${ASR_DIR}/requirements.txt"
 
 if [ ! -f "${ASR_ENV_PATH}" ]; then

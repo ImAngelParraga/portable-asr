@@ -3,6 +3,7 @@
 §G
 G1: Make ASR service sole owner of transcription semantics: vocabulary biasing, cleanup, filler handling, correction, and optional translation.
 G2: Return final semantic transcript from audio endpoint so thin clients only present/insert received text.
+G3: Select Whisper or optional Qwen3-ASR per request through existing OpenAI-compatible `model` field.
 
 §C
 C1: Keep `POST /v1/audio/transcriptions` OpenAI-compatible for existing clients.
@@ -12,12 +13,14 @@ C4: Post-processing remains optional; disabled/unavailable optional cleanup fail
 C5: Vocabulary context is bounded, sanitized, excluded from logs, and must not silently become permanent server state.
 C6: Translation never occurs implicitly. Request must select translation and target semantics explicitly.
 C7: Tests require no GPU, network, live Whisper, or live LLM.
+C8: Existing model names continue to select Whisper; Qwen3-ASR runs only when explicitly enabled and selected.
 
 §I
 I.transcribe: `POST /v1/audio/transcriptions` accepts multipart audio, `model`, `temperature`, optional `language`, optional bounded `prompt`; returns final text after configured service processing.
 I.translate: Add explicit translation API contract before enabling client controls: OpenAI-compatible `POST /v1/audio/translations` for English, with separately documented/versioned extension if arbitrary target languages are supported.
 I.postprocess: `POST /v1/text/postprocess` and `POST /v1/chat/completions` expose service cleanup directly; audio endpoint may invoke same internal pipeline.
 I.config: `ASR_POSTPROCESS_*` owns provider/model/token/timeout/prompt/failure policy; clients never receive these secrets.
+I.models: `model=qwen3-asr-1.7b` selects resident Qwen3-ASR when `ASR_QWEN_ENABLED=1`; all other legacy model values select Whisper. `ASR_QWEN_*` configures checkpoint, interpreter, and GPU placement.
 
 §V
 V1: Audio processing order is fixed and tested: validate request → transcribe with optional `language`/`prompt` context → optional conservative cleanup → optional explicitly requested translation → response.
@@ -33,6 +36,8 @@ V10: Spoken technical separators align only matching raw/corrected word sequence
 V11: Clear Spanish and English technical cues reconstruct spoken hyphen and underscore commands through the full cleanup pipeline, including space-only LLM output, while ordinary-language uses remain unchanged.
 V12: Valid bilingual list controls format Markdown without inventing a title: `lista de ítems` / `item list` creates bullets; `lista numerada` / `numbered list` creates numbering; `nuevo ítem` / `new item` separates either type; the immediately preceding clause is preserved as an introduction with an implicit colon.
 V13: List formatting preserves source language plus every item's content, quantity, and order; control phrases disappear only in valid list context, ordinary-language uses remain prose, and comma-separated items are inferred only for clear enumerations.
+V14: Cleanup rejects substantial word replacement for every nonempty transcript, including one-to-three-word phrases; existing punctuation, technical-literal, and Spanish marker repairs still pass.
+V15: Enabled Qwen selector routes audio to resident Qwen worker; `language` and bounded `prompt` reach Qwen language/context inputs, Qwen stays loaded beside Whisper, and disabled selector returns 400.
 
 §T
 id|status|task|detail|cites
@@ -43,8 +48,10 @@ T4|.|Translation contract|Implement and document `POST /v1/audio/translations` f
 T5|.|Compatibility matrix|Test legacy transcription request, language hint, prompt context, post-processing disabled/enabled/unavailable, and explicit translation without GPU/network/live models.|C7,V1,V2,V3,V6,V7,V8
 T6|x|Bilingual technical separators|Add symmetric Spanish/English technical cues, recover spoken hyphens/underscores from space-only cleanup output, and preserve ordinary-language uses.|I.postprocess,C3,C7,V10,V11
 T7|x|Bilingual formatted lists|Add explicit bullet/numbered list controls, shared item separator, implicit introduction colon, conservative comma inference, output validation, and offline bilingual regression tests.|I.postprocess,C3,C7,V12,V13
+T8|x|Optional Qwen3-ASR engine|Route model selector to resident Qwen worker, forward language/context, preserve Whisper default, document isolated runtime and verify on host.|I.models,C8,V15
 
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
 B2|2026-07-30|Prompt omitted `barra baja`; technical cues lacked bilingual symmetry; repair missed space-only LLM output; safety guard counted `baja` as content|V11
+B3|2026-09-23|Meaningful-word guard skipped phrases shorter than four words, allowing cleanup to translate short English transcripts; applying guard before Spanish marker restoration dropped valid punctuation|V14

@@ -159,6 +159,27 @@ ASR_LLM_CUDA_VISIBLE_DEVICES=1
 
 UUIDs are useful on systems where device order may change. Use placeholder examples in public docs and keep real UUIDs private.
 
+## Optional Qwen3-ASR
+
+Qwen3-ASR can run beside resident Whisper in a separate Python worker. Keep the base ASR environment unchanged. Create a separate environment with `qwen-asr==0.0.6` and a PyTorch CUDA wheel compatible with your GPU. Older Pascal/Volta GPUs require the CUDA 12.6 PyTorch wheel; see [PyTorch installation guidance](https://pytorch.org/get-started/locally/).
+
+```bash
+python3 -m venv /opt/asr-qwen/venv
+/opt/asr-qwen/venv/bin/pip install --index-url https://download.pytorch.org/whl/cu126 'torch==2.12.1+cu126'
+/opt/asr-qwen/venv/bin/pip install 'qwen-asr==0.0.6'
+```
+
+Set these values in the service environment:
+
+```env
+ASR_QWEN_ENABLED=1
+ASR_QWEN_PYTHON=/opt/asr-qwen/venv/bin/python
+ASR_QWEN_CHECKPOINT=Qwen/Qwen3-ASR-1.7B
+ASR_QWEN_CUDA_VISIBLE_DEVICES=0
+```
+
+Send `model=qwen3-asr-1.7b` to `/v1/audio/transcriptions` to use Qwen. Existing model values continue to use Whisper. The Qwen worker starts on first Qwen request and remains loaded; allow extra time for first model download/load, or pre-download the checkpoint. `language=en` and `language=es` map to Qwen's forced-language names, while omitted language uses automatic detection. Multipart `prompt` becomes Qwen request context. Same authentication and optional transcript cleanup apply to both engines. Use OpenVoiceDesktop's ASR **Model** field or OpenVoiceIME's custom-provider **Model** field to select Qwen for that app.
+
 ## Optional Post-Processing
 
 Post-processing cleans punctuation, casing, paragraph breaks, and clear ASR artifacts while preserving meaning and language. It is disabled in the CPU profile.

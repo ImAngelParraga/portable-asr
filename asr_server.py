@@ -35,6 +35,11 @@ ASR_DEVICE = os.environ.get("ASR_DEVICE", "cuda")
 ASR_COMPUTE_TYPE = os.environ.get("ASR_COMPUTE_TYPE", "float16")
 ASR_WHISPER_CUDA_VISIBLE_DEVICES = os.environ.get("ASR_WHISPER_CUDA_VISIBLE_DEVICES", "").strip()
 ASR_WHISPER_KEEP_WARM = os.environ.get("ASR_WHISPER_KEEP_WARM", "0") == "1"
+ASR_QWEN_ENABLED = os.environ.get("ASR_QWEN_ENABLED", "0") == "1"
+ASR_QWEN_MODEL_ID = os.environ.get("ASR_QWEN_MODEL_ID", "qwen3-asr-1.7b")
+ASR_QWEN_CHECKPOINT = os.environ.get("ASR_QWEN_CHECKPOINT", "Qwen/Qwen3-ASR-1.7B")
+ASR_QWEN_PYTHON = os.environ.get("ASR_QWEN_PYTHON", sys.executable)
+ASR_QWEN_CUDA_VISIBLE_DEVICES = os.environ.get("ASR_QWEN_CUDA_VISIBLE_DEVICES", "").strip()
 ASR_BEAM_SIZE = int(os.environ.get("ASR_BEAM_SIZE", "5"))
 ASR_VAD_FILTER = os.environ.get("ASR_VAD_FILTER", "0") == "1"
 ASR_VAD_MIN_SILENCE_MS = int(os.environ.get("ASR_VAD_MIN_SILENCE_MS", "500"))
@@ -95,6 +100,8 @@ _llm_last_used = 0.0
 _llm_block_until = 0.0
 _whisper_worker_lock = threading.RLock()
 _whisper_worker_process = None
+_qwen_worker_lock = threading.RLock()
+_qwen_worker_process = None
 
 security = HTTPBearer(auto_error=False)
 
@@ -852,7 +859,7 @@ def _start_whisper_worker_locked():
     )
     print(f"[asr] Whisper worker started pid={_whisper_worker_process.pid}")
 
-def _read_whisper_worker_response(process: subprocess.Popen, deadline: float, request_id: str) -> dict:
+def _read_whisper_worker_response(process: subprocess.Popen, deadline: float, request_id: str, worker_name: str = "Whisper") -> dict:
     assert process.stdout is not None
     fd = process.stdout.fileno()
     while time.monotonic() < deadline:
@@ -868,16 +875,16 @@ def _read_whisper_worker_response(process: subprocess.Popen, deadline: float, re
         try:
             payload = json.loads(line)
         except json.JSONDecodeError:
-            print(f"[asr:whisper-worker] {line}")
+            print(f"[asr:{worker_name.lower()}-worker] {line}")
             continue
         if isinstance(payload, dict):
             if payload.get("ready") is True:
                 continue
             if payload.get("request_id") != request_id:
-                print(f"[asr:whisper-worker] ignoring stale response for request {payload.get('request_id')}")
+                print(f"[asr:{worker_name.lower()}-worker] ignoring stale response for request {payload.get('request_id')}")
                 continue
             return payload
-    raise TimeoutError("timed out waiting for Whisper worker response")
+    raise TimeoutError(f"timed out waiting for {worker_name} worker response")
 
 def _run_transcription_persistent(audio_path: str, language: str | None, temperature: float, prompt: str | None = None) -> tuple[list[str], dict]:
     """Transcribe through a resident worker so Whisper stays loaded on its GPU."""
@@ -920,6 +927,88 @@ def _run_transcription(audio_path: str, language: str | None, temperature: float
     if ASR_WHISPER_KEEP_WARM:
         return _run_transcription_persistent(audio_path, language, temperature, prompt)
     return _run_transcription_subprocess(audio_path, language, temperature, prompt)
+
+def _transcription_engine(model: str | None) -> str:
+    if model == ASR_QWEN_MODEL_ID:
+        if not ASR_QWEN_ENABLED:
+            raise HTTPException(status_code=400, detail="Qwen3-ASR is not enabled")
+        return "qwen"
+    # Preserve legacy clients: model names other than the Qwen selector used Whisper.
+    return "whisper"
+
+def _stop_qwen_worker(reason: str = "requested"):
+    global _qwen_worker_process
+    with _qwen_worker_lock:
+        process = _qwen_worker_process
+        _qwen_worker_process = None
+        if process is None:
+            return
+        if process.poll() is None:
+            try:
+                process.terminate()
+                process.wait(timeout=10)
+            except Exception:
+                process.kill()
+        print(f"[asr] Qwen worker stopped ({reason})")
+
+def _start_qwen_worker_locked():
+    global _qwen_worker_process
+    if _qwen_worker_process is not None and _qwen_worker_process.poll() is None:
+        return
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    device = ASR_QWEN_CUDA_VISIBLE_DEVICES or ASR_WHISPER_CUDA_VISIBLE_DEVICES
+    if device:
+        env["CUDA_VISIBLE_DEVICES"] = device
+    env["ASR_QWEN_CHECKPOINT"] = ASR_QWEN_CHECKPOINT
+    _qwen_worker_process = subprocess.Popen(
+        [ASR_QWEN_PYTHON, str(Path(__file__).with_name("qwen_asr_worker.py"))],
+        env=env,
+        text=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+    )
+    print(f"[asr] Qwen worker started pid={_qwen_worker_process.pid}")
+
+def _run_qwen_transcription(audio_path: str, language: str | None, temperature: float, prompt: str | None = None) -> tuple[list[str], dict]:
+    with _qwen_worker_lock:
+        request_started = time.monotonic()
+        _start_qwen_worker_locked()
+        assert _qwen_worker_process is not None
+        process = _qwen_worker_process
+        if process.stdin is None:
+            _stop_qwen_worker("missing stdin")
+            raise RuntimeError("Qwen worker stdin unavailable")
+        request_id = uuid.uuid4().hex
+        request = {
+            "request_id": request_id,
+            "audio_path": audio_path,
+            "language": language or "",
+            "prompt": prompt or "",
+        }
+        try:
+            process.stdin.write(json.dumps(request) + "\n")
+            process.stdin.flush()
+            payload = _read_whisper_worker_response(
+                process, time.monotonic() + ASR_REQUEST_TIMEOUT, request_id, "Qwen"
+            )
+        except Exception:
+            _stop_qwen_worker("request failure")
+            raise
+        if process.poll() is not None:
+            _stop_qwen_worker("worker exited")
+            raise RuntimeError("Qwen worker exited")
+        if payload.get("ok") is not True:
+            raise RuntimeError(str(payload.get("error") or "Qwen worker failed"))
+        segments = payload.get("segments")
+        if not isinstance(segments, list):
+            raise RuntimeError("Qwen worker returned no JSON segments")
+        timings = payload.get("timings") if isinstance(payload.get("timings"), dict) else {}
+        timings["qwen_worker_roundtrip_ms"] = _timing_ms(request_started)
+        return [str(segment) for segment in segments], timings
 
 def _transcribe_worker_loop():
     model_obj = load_model()
@@ -1443,7 +1532,7 @@ def _protect_formatted_list_rewrite(raw_text: str, prepared_text: str, corrected
 def _protect_meaningful_order_rewrite(raw_text: str, corrected: str) -> str:
     """Reject broad rewrites that reorder or replace too many meaningful words."""
     raw_tokens = _meaningful_order_tokens(raw_text)
-    if len(raw_tokens) < 4:
+    if not raw_tokens:
         return corrected
     corrected_tokens = _meaningful_order_tokens(corrected)
     if not corrected_tokens:
@@ -1638,9 +1727,9 @@ def _postprocess_transcript(
     corrected = re.sub(r'\s+([?.!,;:])', r'\1', corrected)
     corrected = _protect_formatted_list_rewrite(raw_text, prepared_text, corrected)
     corrected = _protect_spanish_diminutive_rewrite(raw_text, corrected)
-    corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
     corrected = _protect_spanish_pronoun_rewrite(raw_text, corrected)
     corrected = _protect_spanish_discourse_marker_rewrite(raw_text, corrected)
+    corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
     _log_llm_postprocess_timing(result, raw_text, corrected)
     if not corrected:
         return raw_text
@@ -1687,6 +1776,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     _stop_whisper_worker("ASR service shutdown")
+    _stop_qwen_worker("ASR service shutdown")
     unload_model()
     _stop_llm_server("ASR service shutdown")
     print("[asr] Shutdown complete")
@@ -1704,15 +1794,13 @@ async def health():
 
 @app.get("/v1/models")
 async def models(token: str = Depends(verify_token)):
+    model_ids = ["whisper-1"]
+    if ASR_QWEN_ENABLED:
+        model_ids.append(ASR_QWEN_MODEL_ID)
+    model_ids.append(ASR_POSTPROCESS_MODEL)
     return {
         "object": "list",
-        "data": [
-            {
-                "id": ASR_POSTPROCESS_MODEL,
-                "object": "model",
-                "owned_by": "local",
-            }
-        ],
+        "data": [{"id": model_id, "object": "model", "owned_by": "local"} for model_id in model_ids],
     }
 
 @app.post("/v1/text/postprocess")
@@ -1857,6 +1945,7 @@ async def transcriptions(
     read_ms = _timing_ms(read_started)
     audio_bytes = len(contents)
     transcription_prompt = _normalize_transcription_prompt(prompt)
+    engine = _transcription_engine(model)
     if len(contents) > ASR_MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
@@ -1886,11 +1975,12 @@ async def transcriptions(
             _stop_llm_server("Whisper transcription requested")
 
         try:
-            whisper_started = time.monotonic()
-            text_parts, whisper_timings = await asyncio.wait_for(
+            transcribe_started = time.monotonic()
+            transcribe_fn = _run_qwen_transcription if engine == "qwen" else _run_transcription
+            text_parts, engine_timings = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,
-                    _run_transcription,
+                    transcribe_fn,
                     temp_path,
                     language,
                     temperature,
@@ -1898,7 +1988,7 @@ async def transcriptions(
                 ),
                 timeout=ASR_REQUEST_TIMEOUT + 10,
             )
-            whisper_total_ms = _timing_ms(whisper_started)
+            transcribe_total_ms = _timing_ms(transcribe_started)
         except asyncio.TimeoutError:
             raise HTTPException(status_code=504, detail="Transcription timed out")
 
@@ -1908,9 +1998,9 @@ async def transcriptions(
         if not full_text:
             full_text = ""
 
-        if not ASR_WHISPER_KEEP_WARM:
+        if engine == "whisper" and not ASR_WHISPER_KEEP_WARM:
             unload_model()
-        if ASR_STOP_LLM_FOR_TRANSCRIPTION and not ASR_WHISPER_KEEP_WARM:
+        if engine == "whisper" and ASR_STOP_LLM_FOR_TRANSCRIPTION and not ASR_WHISPER_KEEP_WARM:
             _settle_after_whisper_unload()
         postprocess_started = time.monotonic()
         full_text = await asyncio.get_event_loop().run_in_executor(
@@ -1926,15 +2016,17 @@ async def transcriptions(
         timings = {
             "request_read_ms": read_ms,
             "temp_write_ms": write_ms,
-            "whisper_total_ms": whisper_total_ms,
+            "transcribe_total_ms": transcribe_total_ms,
             "postprocess_ms": postprocess_ms,
             "total_ms": total_ms,
             "prompt_chars": len(transcription_prompt or ""),
         }
-        timings.update(whisper_timings)
+        if engine == "whisper":
+            timings["whisper_total_ms"] = transcribe_total_ms
+        timings.update(engine_timings)
         print(
             "[asr] transcription timing "
-            f"bytes={audio_bytes} language={language or 'auto'} chars={len(full_text)} "
+            f"engine={engine} bytes={audio_bytes} language={language or 'auto'} chars={len(full_text)} "
             + " ".join(f"{key}={value}" for key, value in timings.items())
         )
 
@@ -1959,7 +2051,7 @@ async def transcriptions(
         _concurrency_semaphore.release()
         # Cleanup request memory
         del contents
-        if not ASR_WHISPER_KEEP_WARM:
+        if engine == "whisper" and not ASR_WHISPER_KEEP_WARM:
             unload_model()
         gc.collect()
 
