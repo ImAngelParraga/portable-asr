@@ -44,6 +44,9 @@ V16: Qwen worker inherits device/cache configuration but never inherits Whisper'
 V17: ASR catalog lists Whisper and only enabled optional transcription engines, using their configured IDs; it excludes the cleanup LLM, requires bearer auth, and does not load models.
 V18: GPU arbitration recognizes resident Whisper and Qwen workers as service-owned processes; neither blocks cleanup LLM startup after transcription, while unrelated GPU jobs remain external.
 V19: Qwen decodes accepted AAC/M4A and WAV uploads to mono 16 kHz PCM WAV before model inference, keeps decoded audio only for that request, and never calls the model after decoder failure; Whisper routing is unchanged.
+V20: Cleanup accepts digit formatting of equivalent spoken Spanish and English cardinal numbers through 999, including dotted sequences and zero components; it rejects changed numeric values and changed surrounding words.
+V21: Explicit `deletreo ... fin de deletreo` / `spell ... end spelling` controls join recognized letter names into one word without consuming following speech; unclear or incomplete controls remain literal, spelled words survive cleanup, and block capitals become ordinary word case.
+V22: List controls accept documented bullet/numbered aliases and next-item aliases while preserving item content, order, and introduction.
 
 §T
 id|status|task|detail|cites
@@ -57,6 +60,9 @@ T7|x|Bilingual formatted lists|Add explicit bullet/numbered list controls, share
 T8|x|Optional Qwen3-ASR engine|Route model selector to resident Qwen worker, forward language/context, preserve Whisper default, document isolated runtime and verify on host.|I.models,C8,V15
 T9|x|ASR model catalog|Expose authenticated ASR-only model IDs so clients discover enabled engines without hardcoded choices.|I.catalog,G4,V17
 T10|x|Decode Qwen client audio|Normalize uploaded AAC/M4A and WAV through FFmpeg before Qwen inference, remove temporary PCM after each request, and cover failure without GPU or model downloads.|I.transcribe,I.models,V19
+T11|x|Protect numeric formatting|Canonicalize equivalent spoken cardinals for cleanup safety checks and test version numbers, surrounding words, and wrong values.|I.postprocess,V20
+T12|x|Join explicitly spelled words|Prepare delimited Spanish/English spelling before cleanup, protect letter order and case, and test unknown or incomplete controls.|I.postprocess,V21
+T13|x|Expand spoken list controls|Accept bullet/numbered and next-item voice aliases, document the syntax, and test output structure.|I.postprocess,V22
 
 §B
 id|date|cause|fix
@@ -66,3 +72,4 @@ B3|2026-09-23|Meaningful-word guard skipped phrases shorter than four words, all
 B4|2026-09-23|Qwen worker inherited Whisper's cuDNN library path and failed GPU inference with `GET was unable to find an engine to execute this computation`|V16
 B5|2026-09-23|GPU arbitration exempted the resident Whisper worker but classified the resident Qwen worker as external; required cleanup could not start after Qwen transcription and returned HTTP 500|V18
 B6|2026-09-23|Qwen forwarded Android AAC/M4A to librosa 1.0 and libsndfile, which cannot decode that container and raised LibsndfileError|V19
+B7|2026-09-25|Cleanup safety guard compared spoken number words against digits as unrelated tokens and restored raw transcript even when LLM produced equivalent 4.58.0|V20

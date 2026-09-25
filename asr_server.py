@@ -168,6 +168,7 @@ Core rules:
    - ten percent -> 10%
    - five dollars -> $5
    - doscientos euros -> 200 €
+   - cuatro punto cincuenta y ocho punto cero -> 4.58.0 (keep every component, including zero)
 6. Keep every part in its original language. Do not translate.
 7. Preserve meaning and original word order as much as possible. Do not paraphrase or rewrite style.
 
@@ -180,9 +181,9 @@ Paragraphing rules:
 13. Start a new paragraph at clear transition phrases such as "dicho esto", "ahora cambio de tema", "cambiando de tema", "por otro lado", "por cierto", or "en otro orden de cosas".
 
 List formatting control rules:
-- Treat `lista de ítems` / `item list` / `list of items` as a bulleted-list control only when followed by at least two clear items.
-- Treat `lista numerada` / `numbered list` as a numbered-list control only when followed by at least two clear items.
-- In either list type, `nuevo ítem` / `new item` starts the next item.
+- Treat `lista de ítems` / `lista con viñetas` / `item list` / `bullet list` as a bulleted-list control only when followed by at least two clear items.
+- Treat `lista numerada` / `lista con números` / `numbered list` as a numbered-list control only when followed by at least two clear items.
+- In either list type, `nuevo ítem` / `nuevo elemento` / `siguiente elemento` / `new item` / `next item` starts the next item.
 - `fin de lista` / `end of list` ends the list; preserve following speech as normal prose.
 - Remove recognized list control phrases from the output.
 - Preserve the clause immediately before the list control as the introduction and add an implicit colon. Do not invent a title when there is no introduction.
@@ -190,6 +191,10 @@ List formatting control rules:
 - Clear comma-separated short items may become separate items. If commas belong inside an item or the enumeration is uncertain, preserve them inside the item.
 - Use Markdown `- ` markers for bulleted lists and sequential `1. `, `2. ` markers for numbered lists.
 - Do not treat ordinary-language mentions such as `una lista de ítems defectuosos` or `we discussed an item list` as controls.
+
+Spelling control:
+- `deletreo ... fin de deletreo` / `spell ... end spelling` marks letters to join into one word. Keep exact letter order, use ordinary word casing rather than all capitals, and apply an accent only when clear from context or explicitly spoken.
+- Do not include spelling-control words in the result. Leave incomplete or unclear spelling unchanged.
 
 Spoken punctuation and technical literals:
 14. Replace spoken punctuation commands with symbols when they are clearly commands:
@@ -281,6 +286,9 @@ Clean: Deployment steps:
 
 1. Run tests
 2. Copy the file
+
+Raw: escribe deletreo eme a erre i a fin de deletreo aquí
+Clean: Escribe maria aquí.
 
 Raw: I drew a dot on the paper
 Clean: I drew a dot on the paper.
@@ -1358,12 +1366,12 @@ def _normalized_word_tokens(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", _normalized_plain_text(text))
 
 _LIST_TRIGGER_RE = re.compile(
-    r"(?P<numbered>\b(?:lista\s+numerada|numbered\s+list)\b)|"
-    r"(?P<bulleted>\b(?:lista\s+de\s+[íi]tems?|item\s+list|list\s+of\s+items?)\b)",
+    r"(?P<numbered>\b(?:lista\s+numerada|lista\s+con\s+n[uú]meros|numbered\s+list)\b)|"
+    r"(?P<bulleted>\b(?:lista\s+de\s+[íi]tems?|lista\s+con\s+vi[ñn]etas|item\s+list|bullet\s+list|list\s+of\s+items?)\b)",
     re.IGNORECASE,
 )
 _LIST_ITEM_SEPARATOR_RE = re.compile(
-    r"\b(?:nuevo\s+[íi]tem|new\s+item)\b",
+    r"\b(?:nuevo\s+(?:[íi]tem|elemento)|siguiente\s+(?:[íi]tem|elemento)|new\s+item|next\s+item)\b",
     re.IGNORECASE,
 )
 _LIST_END_RE = re.compile(
@@ -1450,6 +1458,129 @@ def _prepare_formatted_list_transcript(text: str) -> str:
     sections = [section for section in (introduction, list_text, tail) if section]
     return "\n\n".join(sections)
 
+_SPELLING_CONTROL_RE = re.compile(
+    r"\b(?:deletreo|spell)\b\s+(.+?)\s+\b(?:fin\s+de\s+deletreo|end\s+spelling)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_SPOKEN_LETTERS = {
+    "a": "a", "be": "b", "b": "b", "ce": "c", "c": "c", "de": "d", "d": "d",
+    "e": "e", "efe": "f", "f": "f", "ge": "g", "g": "g", "hache": "h",
+    "i": "i", "jota": "j", "j": "j", "ka": "k", "k": "k", "ele": "l",
+    "l": "l", "eme": "m", "m": "m", "ene": "n", "n": "n", "eñe": "ñ",
+    "o": "o", "pe": "p", "p": "p", "cu": "q", "q": "q", "erre": "r",
+    "r": "r", "ese": "s", "s": "s", "te": "t", "t": "t", "u": "u",
+    "uve": "v", "v": "v", "doble u": "w", "w": "w", "equis": "x",
+    "x": "x", "ye": "y", "i griega": "y", "y": "y", "zeta": "z", "z": "z",
+    "a con tilde": "á", "e con tilde": "é", "i con tilde": "í",
+    "o con tilde": "ó", "u con tilde": "ú",
+}
+
+def _prepare_spelled_words(text: str) -> str:
+    """Join explicitly delimited spoken letters; leave uncertain spans untouched."""
+    def replace(match: re.Match) -> str:
+        body = match.group(1).lower()
+        for vowel in "aeiou":
+            body = body.replace(f"{vowel} con tilde", f"{vowel}_con_tilde")
+        body = body.replace("i griega", "i_griega").replace("doble u", "doble_u")
+        tokens = re.findall(r"[a-zñ_]+", body)
+        letters = [_SPOKEN_LETTERS.get(token.replace("_", " ")) for token in tokens]
+        if len(letters) < 2 or any(letter is None for letter in letters):
+            return match.group(0)
+        return "".join(letters)
+    return _SPELLING_CONTROL_RE.sub(replace, text)
+
+def _protect_spelled_words(raw_text: str, prepared_text: str, corrected: str) -> str:
+    """Keep explicitly spelled words and prevent block-capital output."""
+    if prepared_text == raw_text:
+        return corrected
+    spelled_words = []
+    for match in _SPELLING_CONTROL_RE.finditer(raw_text):
+        word = _prepare_spelled_words(match.group(0))
+        if word != match.group(0):
+            spelled_words.append(_normalized_plain_text(word))
+    corrected_tokens = _normalized_word_tokens(corrected)
+    if _lcs_length(spelled_words, corrected_tokens) < len(spelled_words):
+        print("[asr] post-processing changed spelled word; returning prepared transcript")
+        return prepared_text
+    def lower_block_caps(match: re.Match) -> str:
+        value = match.group(0)
+        if _normalized_plain_text(value) not in spelled_words or not value.isupper() or len(value) < 2:
+            return value
+        before = corrected[:match.start()].rstrip()
+        return value.capitalize() if not before or before[-1] in ".!?" else value.lower()
+    return re.sub(r"(?<!\w)[^\W\d_]+(?!\w)", lower_block_caps, corrected)
+
+_SPANISH_UNITS = {
+    "cero": 0, "uno": 1, "dos": 2, "tres": 3,
+    "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7, "ocho": 8,
+    "nueve": 9, "diez": 10, "once": 11, "doce": 12, "trece": 13,
+    "catorce": 14, "quince": 15, "dieciseis": 16, "diecisiete": 17,
+    "dieciocho": 18, "diecinueve": 19, "veinte": 20,
+    "veintiuno": 21, "veintiuna": 21, "veintidos": 22,
+    "veintitres": 23, "veinticuatro": 24, "veinticinco": 25,
+    "veintiseis": 26, "veintisiete": 27, "veintiocho": 28,
+    "veintinueve": 29,
+}
+_SPANISH_TENS = {
+    "treinta": 30, "cuarenta": 40, "cincuenta": 50,
+    "sesenta": 60, "setenta": 70, "ochenta": 80, "noventa": 90,
+}
+_SPANISH_HUNDREDS = {
+    "cien": 100, "ciento": 100, "doscientos": 200, "doscientas": 200,
+    "trescientos": 300, "trescientas": 300, "cuatrocientos": 400,
+    "cuatrocientas": 400, "quinientos": 500, "quinientas": 500,
+    "seiscientos": 600, "seiscientas": 600, "setecientos": 700,
+    "setecientas": 700, "ochocientos": 800, "ochocientas": 800,
+    "novecientos": 900, "novecientas": 900,
+}
+_ENGLISH_UNITS = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4,
+    "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16,
+    "seventeen": 17, "eighteen": 18, "nineteen": 19,
+}
+_ENGLISH_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+
+def _spoken_number_at(tokens: list[str], index: int) -> tuple[str, int] | None:
+    """Recognize exact cardinal phrases through 999 for safety comparisons."""
+    word = tokens[index]
+    if word in _SPANISH_HUNDREDS:
+        value = _SPANISH_HUNDREDS[word]
+        if index + 1 < len(tokens):
+            rest = _spoken_number_at(tokens, index + 1)
+            if rest is not None and 0 < int(rest[0]) < 100 and word != "cien":
+                return str(value + int(rest[0])), rest[1] + 1
+        return str(value), 1
+    if word in _ENGLISH_UNITS and 0 < _ENGLISH_UNITS[word] < 10 and index + 1 < len(tokens) and tokens[index + 1] == "hundred":
+        value = _ENGLISH_UNITS[word] * 100
+        rest_index = index + 2
+        if rest_index < len(tokens) and tokens[rest_index] == "and":
+            rest_index += 1
+        if rest_index < len(tokens):
+            rest = _spoken_number_at(tokens, rest_index)
+            if rest is not None and 0 < int(rest[0]) < 100:
+                return str(value + int(rest[0])), rest_index + rest[1] - index
+        return str(value), 2
+    if word in _SPANISH_TENS:
+        value = _SPANISH_TENS[word]
+        if index + 2 < len(tokens) and tokens[index + 1] == "y" and tokens[index + 2] in _SPANISH_UNITS and 0 < _SPANISH_UNITS[tokens[index + 2]] < 10:
+            return str(value + _SPANISH_UNITS[tokens[index + 2]]), 3
+        return str(value), 1
+    if word in _ENGLISH_TENS:
+        value = _ENGLISH_TENS[word]
+        if index + 1 < len(tokens) and tokens[index + 1] in _ENGLISH_UNITS and 0 < _ENGLISH_UNITS[tokens[index + 1]] < 10:
+            return str(value + _ENGLISH_UNITS[tokens[index + 1]]), 2
+        return str(value), 1
+    if word in _SPANISH_UNITS:
+        return str(_SPANISH_UNITS[word]), 1
+    if word in _ENGLISH_UNITS:
+        return str(_ENGLISH_UNITS[word]), 1
+    return None
+
 def _meaningful_order_tokens(text: str) -> list[str]:
     text = _normalized_plain_text(text)
     text = re.sub(
@@ -1463,11 +1594,26 @@ def _meaningful_order_tokens(text: str) -> list[str]:
         "period", "full", "stop", "comma", "question", "mark",
         "slash", "backslash", "hyphen", "dash", "underscore",
         "colon", "semicolon", "dot", "at",
-        "punto", "coma", "interrogacion", "barra",
+        "punto", "point", "coma", "interrogacion", "barra",
         "guion", "arroba", "pregunta",
         "abre", "cierra",
     }
-    return [token for token in re.findall(r"[a-z0-9]+", text) if token not in ignored]
+    tokens = re.findall(r"[a-z0-9]+", text)
+    result = []
+    index = 0
+    while index < len(tokens):
+        if tokens[index] in ignored:
+            index += 1
+            continue
+        number = _spoken_number_at(tokens, index)
+        if number is not None:
+            value, consumed = number
+            result.append(value)
+            index += consumed
+            continue
+        result.append(tokens[index])
+        index += 1
+    return result
 
 def _lcs_length(left: list[str], right: list[str]) -> int:
     """Return the longest common subsequence length using two rolling rows."""
@@ -1544,7 +1690,7 @@ def _protect_meaningful_order_rewrite(raw_text: str, corrected: str) -> str:
     if not corrected_tokens:
         return raw_text
     preserved_ratio = _lcs_length(raw_tokens, corrected_tokens) / len(raw_tokens)
-    if preserved_ratio < 0.8:
+    if preserved_ratio < 0.8 or (re.search(r"\d", raw_text + corrected) and raw_tokens != corrected_tokens):
         print(
             "[asr] post-processing changed meaningful word order/content "
             f"too much ({preserved_ratio:.2f}); returning raw transcript"
@@ -1684,7 +1830,7 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
-    prepared_text = _prepare_formatted_list_transcript(raw_text)
+    prepared_text = _prepare_formatted_list_transcript(_prepare_spelled_words(raw_text))
     system_prompt = instruction.strip() if instruction and instruction.strip() else DEFAULT_POSTPROCESS_PROMPT
     user_prompt = prepared_text if direct_prompt else f"Raw transcript:\n{prepared_text}\n\nCorrected transcript:"
     max_tokens = max(64, min(4096, len(raw_text) // 2 + 128))
@@ -1735,6 +1881,7 @@ def _postprocess_transcript(
     corrected = _protect_spanish_diminutive_rewrite(raw_text, corrected)
     corrected = _protect_spanish_pronoun_rewrite(raw_text, corrected)
     corrected = _protect_spanish_discourse_marker_rewrite(raw_text, corrected)
+    corrected = _protect_spelled_words(raw_text, _prepare_spelled_words(raw_text), corrected)
     corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
     _log_llm_postprocess_timing(result, raw_text, corrected)
     if not corrected:

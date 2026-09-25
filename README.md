@@ -66,6 +66,8 @@ When post-processing is enabled, bilingual voice controls can create Markdown li
 - `nuevo ítem` / `new item`: start the next item in either list type.
 - `fin de lista` / `end of list`: optionally end the list before continuing with normal prose.
 
+Alternatives: `lista con viñetas` or `bullet list` for bullets, `lista con números` for numbering, and `nuevo elemento`, `siguiente elemento`, or `siguiente ítem` for the next item. English `next item` also works. State at least two items. Each item may contain commas when you use an explicit next-item phrase. Say `fin de lista` before continuing normal dictation.
+
 The clause before the list control becomes the introduction with an implicit colon. For example, `hoy tengo que comprar lista de ítems plátanos nuevo ítem tomates` becomes:
 
 ```markdown
@@ -76,6 +78,8 @@ Hoy tengo que comprar:
 ```
 
 Clear comma-separated short items also work. Use `nuevo ítem` / `new item` when an item contains commas or item boundaries could be ambiguous.
+
+For a difficult word, say `deletreo`, speak letter names, then say `fin de deletreo`. Example: `escribe deletreo eme a erre i a fin de deletreo aquí` becomes `Escribe maria aquí.` The service joins the letters into one word and uses normal case. It can add an accent when context makes it clear; say the accent explicitly when exact spelling matters. Use `spell ... end spelling` for English. The closing phrase is required so following words remain separate. Unknown letter names leave the span unchanged.
 
 ## Configuration Profiles
 

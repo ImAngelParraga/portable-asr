@@ -54,6 +54,26 @@ class FormattedListTest(unittest.TestCase):
             "deployment steps:\n\n1. run tests\n2. copy the file",
         )
 
+    def test_v22_voice_list_aliases_and_next_element(self):
+        self.assertEqual(
+            _prepare_formatted_list_transcript(
+                "comprar lista con viñetas pan siguiente elemento leche"
+            ),
+            "comprar:\n\n- pan\n- leche",
+        )
+        self.assertEqual(
+            _prepare_formatted_list_transcript(
+                "pasos lista con números abrir siguiente ítem guardar"
+            ),
+            "pasos:\n\n1. abrir\n2. guardar",
+        )
+        self.assertEqual(
+            _prepare_formatted_list_transcript(
+                "buy bullet list bread next item milk"
+            ),
+            "buy:\n\n- bread\n- milk",
+        )
+
     def test_list_without_intro_has_no_invented_title(self):
         raw = "lista de ítems pan nuevo item leche"
         self.assertEqual(
