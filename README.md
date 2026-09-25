@@ -79,7 +79,7 @@ Hoy tengo que comprar:
 
 Clear comma-separated short items also work. Use `nuevo ítem` / `new item` when an item contains commas or item boundaries could be ambiguous.
 
-For a difficult word, say `deletreo`, speak letter names, then say `fin de deletreo`. Example: `escribe deletreo eme a erre i a fin de deletreo aquí` becomes `Escribe maria aquí.` The service joins the letters into one word and uses normal case. It can add an accent when context makes it clear; say the accent explicitly when exact spelling matters. Use `spell ... end spelling` for English. The closing phrase is required so following words remain separate. Unknown letter names leave the span unchanged.
+For a difficult word, say `deletreo`, speak letter names, then say `fin de deletreo`. Example: `escribe deletreo eme a erre i a fin de deletreo aquí` becomes `Escribe maria aquí.` In English, say `spell M A R I A end spelling` or `spell em ay ar eye ay end spelling`; both produce `maria`. The service joins the letters into one word and uses normal case. It can add an accent when context makes it clear; say the accent explicitly when exact spelling matters. The closing phrase is required so following words remain separate. Unknown letter names leave the span unchanged.
 
 ## Configuration Profiles
 

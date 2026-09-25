@@ -194,6 +194,7 @@ List formatting control rules:
 
 Spelling control:
 - `deletreo ... fin de deletreo` / `spell ... end spelling` marks letters to join into one word. Keep exact letter order, use ordinary word casing rather than all capitals, and apply an accent only when clear from context or explicitly spoken.
+- English letter names such as `em ay ar eye ay` represent `maria`; single-letter transcripts such as `M A R I A` also work.
 - Do not include spelling-control words in the result. Leave incomplete or unclear spelling unchanged.
 
 Spoken punctuation and technical literals:
@@ -287,8 +288,11 @@ Clean: Deployment steps:
 1. Run tests
 2. Copy the file
 
-Raw: escribe deletreo eme a erre i a fin de deletreo aquí
-Clean: Escribe maria aquí.
+Raw: escribe maría aquí
+Clean: Escribe María aquí.
+
+Raw: write maria here
+Clean: Write Maria here.
 
 Raw: I drew a dot on the paper
 Clean: I drew a dot on the paper.
@@ -1473,6 +1477,12 @@ _SPOKEN_LETTERS = {
     "x": "x", "ye": "y", "i griega": "y", "y": "y", "zeta": "z", "z": "z",
     "a con tilde": "á", "e con tilde": "é", "i con tilde": "í",
     "o con tilde": "ó", "u con tilde": "ú",
+    "ay": "a", "bee": "b", "see": "c", "dee": "d", "ee": "e",
+    "eff": "f", "gee": "g", "aitch": "h", "eye": "i", "jay": "j",
+    "kay": "k", "ell": "l", "em": "m", "en": "n", "oh": "o",
+    "pee": "p", "cue": "q", "ar": "r", "ess": "s", "tee": "t",
+    "you": "u", "vee": "v", "double you": "w", "ex": "x",
+    "why": "y", "zee": "z", "zed": "z",
 }
 
 def _prepare_spelled_words(text: str) -> str:
@@ -1482,6 +1492,7 @@ def _prepare_spelled_words(text: str) -> str:
         for vowel in "aeiou":
             body = body.replace(f"{vowel} con tilde", f"{vowel}_con_tilde")
         body = body.replace("i griega", "i_griega").replace("doble u", "doble_u")
+        body = body.replace("double you", "double_you")
         tokens = re.findall(r"[a-zñ_]+", body)
         letters = [_SPOKEN_LETTERS.get(token.replace("_", " ")) for token in tokens]
         if len(letters) < 2 or any(letter is None for letter in letters):

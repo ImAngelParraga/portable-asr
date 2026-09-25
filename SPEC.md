@@ -45,7 +45,7 @@ V17: ASR catalog lists Whisper and only enabled optional transcription engines, 
 V18: GPU arbitration recognizes resident Whisper and Qwen workers as service-owned processes; neither blocks cleanup LLM startup after transcription, while unrelated GPU jobs remain external.
 V19: Qwen decodes accepted AAC/M4A and WAV uploads to mono 16 kHz PCM WAV before model inference, keeps decoded audio only for that request, and never calls the model after decoder failure; Whisper routing is unchanged.
 V20: Cleanup accepts digit formatting of equivalent spoken Spanish and English cardinal numbers through 999, including dotted sequences and zero components; it rejects changed numeric values and changed surrounding words.
-V21: Explicit `deletreo ... fin de deletreo` / `spell ... end spelling` controls join recognized letter names into one word without consuming following speech; unclear or incomplete controls remain literal, spelled words survive cleanup, and block capitals become ordinary word case.
+V21: Explicit `deletreo ... fin de deletreo` / `spell ... end spelling` controls join Spanish or English letter names and single-letter transcripts into one word without consuming following speech; unclear or incomplete controls remain literal, spelled words survive cleanup, and block capitals become ordinary word case.
 V22: List controls accept documented bullet/numbered aliases and next-item aliases while preserving item content, order, and introduction.
 
 §T
@@ -73,3 +73,4 @@ B4|2026-09-23|Qwen worker inherited Whisper's cuDNN library path and failed GPU 
 B5|2026-09-23|GPU arbitration exempted the resident Whisper worker but classified the resident Qwen worker as external; required cleanup could not start after Qwen transcription and returned HTTP 500|V18
 B6|2026-09-23|Qwen forwarded Android AAC/M4A to librosa 1.0 and libsndfile, which cannot decode that container and raised LibsndfileError|V19
 B7|2026-09-25|Cleanup safety guard compared spoken number words against digits as unrelated tokens and restored raw transcript even when LLM produced equivalent 4.58.0|V20
+B8|2026-09-25|English spelling control existed but parser recognized only literal letters and Spanish letter names; spoken English names remained unjoined|V21

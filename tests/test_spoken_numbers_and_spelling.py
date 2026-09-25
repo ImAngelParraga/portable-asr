@@ -60,6 +60,25 @@ class SpokenNumbersAndSpellingTest(unittest.TestCase):
             "maría",
         )
 
+    def test_v21_english_letter_names_and_initials(self):
+        self.assertEqual(
+            asr_server._prepare_spelled_words(
+                "write spell em ay ar eye ay end spelling here"
+            ),
+            "write maria here",
+        )
+        self.assertEqual(
+            self.postprocess("write spell M A R I A end spelling here", "Write MARIA here."),
+            "Write maria here.",
+        )
+        self.assertEqual(
+            asr_server._prepare_spelled_words("spell double you eye en end spelling"),
+            "win",
+        )
+
+    def test_v21_prompt_preserves_english_spelling_context(self):
+        self.assertIn("Raw: write maria here\nClean: Write Maria here.", asr_server.DEFAULT_POSTPROCESS_PROMPT)
+
     def test_v21_incomplete_or_unclear_spelling_remains_raw(self):
         for raw in ("deletreo eme a erre", "deletreo eme palabra fin de deletreo"):
             with self.subTest(raw=raw):
