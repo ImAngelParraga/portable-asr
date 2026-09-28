@@ -98,6 +98,28 @@ class PostprocessFailureTest(unittest.TestCase):
                 "Ya, tienes razón.",
             )
 
+    def test_v23_question_marker_rejects_invented_words(self):
+        self.assertEqual(
+            self._postprocess_with_model_output(
+                "pregunta ahora sí", "¿Por qué ahora sí?"
+            ),
+            "¿Ahora sí?",
+        )
+
+    def test_v23_question_marker_survives_plain_model_output(self):
+        self.assertEqual(
+            self._postprocess_with_model_output(
+                "pregunta ahora sí", "Ahora sí."
+            ),
+            "¿Ahora sí?",
+        )
+
+    def test_v23_short_phrase_rejects_invented_question_words(self):
+        self.assertEqual(
+            self._postprocess_with_model_output("ahora sí", "¿Por qué ahora sí?"),
+            "ahora sí",
+        )
+
     def test_v11_prompt_contains_bilingual_symbols_and_cues(self):
         prompt = asr_server.DEFAULT_POSTPROCESS_PROMPT
         self.assertIn("hyphen / dash / guion / guión -> -", prompt)

@@ -47,6 +47,7 @@ V19: Qwen decodes accepted AAC/M4A and WAV uploads to mono 16 kHz PCM WAV before
 V20: Cleanup accepts digit formatting of equivalent spoken Spanish and English cardinal numbers through 999, including dotted sequences and zero components; it rejects changed numeric values and changed surrounding words.
 V21: Explicit `deletreo ... fin de deletreo` / `spell ... end spelling` controls join Spanish or English letter names and single-letter transcripts into one word without consuming following speech; unclear or incomplete controls remain literal, spelled words survive cleanup, and block capitals become ordinary word case.
 V22: List controls accept documented bullet/numbered aliases and next-item aliases while preserving item content, order, and introduction.
+V23: Cleanup rejects invented words in short transcripts as well as lost words; sentence-leading Spanish `pregunta` deterministically produces `¿...?` punctuation around the original question content even when the LLM adds words or emits a statement.
 
 §T
 id|status|task|detail|cites
@@ -74,3 +75,4 @@ B5|2026-09-23|GPU arbitration exempted the resident Whisper worker but classifie
 B6|2026-09-23|Qwen forwarded Android AAC/M4A to librosa 1.0 and libsndfile, which cannot decode that container and raised LibsndfileError|V19
 B7|2026-09-25|Cleanup safety guard compared spoken number words against digits as unrelated tokens and restored raw transcript even when LLM produced equivalent 4.58.0|V20
 B8|2026-09-25|English spelling control existed but parser recognized only literal letters and Spanish letter names; spoken English names remained unjoined|V21
+B9|2026-09-28|Meaningful-word guard checked only retained input words, so cleanup could insert `por qué` into a short question; leading `pregunta` punctuation depended on LLM output|V23

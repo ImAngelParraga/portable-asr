@@ -1085,6 +1085,25 @@ def _remove_question_directives(text: str) -> str:
     directive = re.compile(r'(^|(?<=[.!?])\s+)(pregunta)\s*[,;:\-]*\s*', re.IGNORECASE)
     return directive.sub(lambda match: match.group(1), text).strip()
 
+def _enforce_leading_question_directive(raw_text: str, corrected: str) -> str:
+    """Keep a spoken leading question command even when cleanup misses it."""
+    marker = re.match(r'^\s*pregunta\b\s*[,;:\-]*\s*', raw_text, re.IGNORECASE)
+    if marker is None:
+        return corrected
+    if corrected == raw_text:
+        corrected = raw_text[marker.end():].strip()
+    corrected = _remove_question_directives(corrected)
+    first = re.match(r'^\s*[¿]?([^.!?\n]+?)[.!?]?(?=\s*$|\s+[A-ZÁÉÍÓÚÜÑ¿¡]|\n)', corrected)
+    if first is None:
+        first = re.match(r'^\s*[¿]?([^.!?\n]+)[.!?]?', corrected)
+    if first is None:
+        return corrected
+    body = first.group(1).strip()
+    if not body:
+        return corrected
+    question = f"¿{body[0].upper()}{body[1:]}?"
+    return question + corrected[first.end():]
+
 def _isolated_expression_command_value(text: str) -> str | None:
     """Return expression text only when the whole text is an isolated command."""
     normalized = text.strip()
@@ -1700,11 +1719,17 @@ def _protect_meaningful_order_rewrite(raw_text: str, corrected: str) -> str:
     corrected_tokens = _meaningful_order_tokens(corrected)
     if not corrected_tokens:
         return raw_text
-    preserved_ratio = _lcs_length(raw_tokens, corrected_tokens) / len(raw_tokens)
-    if preserved_ratio < 0.8 or (re.search(r"\d", raw_text + corrected) and raw_tokens != corrected_tokens):
+    common_length = _lcs_length(raw_tokens, corrected_tokens)
+    preserved_ratio = common_length / len(raw_tokens)
+    added_ratio = common_length / len(corrected_tokens)
+    if (
+        preserved_ratio < 0.8
+        or added_ratio < 0.8
+        or (re.search(r"\d", raw_text + corrected) and raw_tokens != corrected_tokens)
+    ):
         print(
             "[asr] post-processing changed meaningful word order/content "
-            f"too much ({preserved_ratio:.2f}); returning raw transcript"
+            f"too much ({preserved_ratio:.2f}, {added_ratio:.2f}); returning raw transcript"
         )
         return raw_text
     return corrected
@@ -1894,6 +1919,7 @@ def _postprocess_transcript(
     corrected = _protect_spanish_discourse_marker_rewrite(raw_text, corrected)
     corrected = _protect_spelled_words(raw_text, _prepare_spelled_words(raw_text), corrected)
     corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
+    corrected = _enforce_leading_question_directive(raw_text, corrected)
     _log_llm_postprocess_timing(result, raw_text, corrected)
     if not corrected:
         return raw_text
