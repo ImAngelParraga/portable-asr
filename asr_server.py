@@ -1472,6 +1472,16 @@ def _lowercase_joined_technical_literals(text: str) -> str:
 
 def _repair_technical_literal_format(raw_text: str, corrected: str) -> str:
     """Apply deterministic formatting for spoken technical literals."""
+    for match in _SPOKEN_CODE_DIGITS_RE.finditer(raw_text):
+        value = _spoken_code_digit_value(raw_text, match)
+        if value == match.group(0):
+            continue
+        identifier, digits = re.split(r"[-_]", value, maxsplit=1)
+        corrected = _technical_literal_pattern(
+            [identifier, digits], [r"(?:\s*[-_]\s*|\s+)"]
+        ).sub(value, corrected)
+    raw_text = _prepare_spoken_code_digits(raw_text)
+    corrected = _prepare_spoken_code_digits(corrected)
     corrected = _repair_spoken_technical_literals(raw_text, corrected)
     return _lowercase_joined_technical_literals(corrected)
 
@@ -1707,6 +1717,52 @@ _ENGLISH_TENS = {
     "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
     "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
 }
+
+_SPOKEN_DIGITS = {
+    word: str(value)
+    for word, value in {**_SPANISH_UNITS, **_ENGLISH_UNITS}.items()
+    if value < 10
+}
+_SPOKEN_DIGIT_PATTERN = "|".join(map(re.escape, _SPOKEN_DIGITS))
+_SPOKEN_CODE_DIGITS_RE = re.compile(
+    rf"(?<!\w)(?P<identifier>{_TECH_TOKEN_PATTERN})\s+"
+    r"(?P<separator>hyphen|dash|guion|guión|underscore|guion bajo|guión bajo|barra baja)\s+"
+    rf"(?P<digits>(?:\b(?:{_SPOKEN_DIGIT_PATTERN})\b\s+)+"
+    rf"\b(?:{_SPOKEN_DIGIT_PATTERN})\b)",
+    re.IGNORECASE,
+)
+
+def _spoken_code_digit_value(text: str, match: re.Match) -> str:
+    """Canonicalize one code only when its original context is unambiguous."""
+    following = re.match(r"\s+(\w+)", text[match.end():])
+    if following and following.group(1).lower() in {
+        "y", "and", "hundred", "thousand", "mil",
+        *_SPANISH_UNITS, *_SPANISH_TENS, *_SPANISH_HUNDREDS,
+        *_ENGLISH_UNITS, *_ENGLISH_TENS,
+    }:
+        return match.group(0)
+    code_cue = re.search(
+        r"(?i)\b(?:code|c[oó]digo)\s*$", text[:match.start()]
+    )
+    if not code_cue and not _spoken_literal_is_high_confidence(
+        text, match, [match.group("identifier"), match.group("digits")],
+        [match.group("separator")],
+    ):
+        return match.group(0)
+    digits = "".join(
+        _SPOKEN_DIGITS[word.lower()] for word in match.group("digits").split()
+    )
+    return (
+        match.group("identifier").lower()
+        + _spoken_symbol_to_literal(match.group("separator"))
+        + digits
+    )
+
+def _prepare_spoken_code_digits(text: str) -> str:
+    """Join explicitly separated code digit runs without changing ordinary counts."""
+    return _SPOKEN_CODE_DIGITS_RE.sub(
+        lambda match: _spoken_code_digit_value(text, match), text
+    )
 
 def _spoken_number_at(tokens: list[str], index: int) -> tuple[str, int] | None:
     """Recognize exact cardinal phrases through 999 for safety comparisons."""
@@ -1999,7 +2055,9 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
-    prepared_text = _prepare_formatted_list_transcript(_prepare_spelled_words(raw_text))
+    prepared_text = _prepare_formatted_list_transcript(
+        _prepare_spoken_code_digits(_prepare_spelled_words(raw_text))
+    )
     system_prompt = instruction.strip() if instruction and instruction.strip() else DEFAULT_POSTPROCESS_PROMPT
     user_prompt = prepared_text if direct_prompt else f"Raw transcript:\n{prepared_text}\n\nCorrected transcript:"
     max_tokens = max(64, min(4096, len(raw_text) // 2 + 128))

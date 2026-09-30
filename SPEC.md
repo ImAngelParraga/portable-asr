@@ -51,6 +51,7 @@ V22: List controls accept documented bullet/numbered aliases and next-item alias
 V23: Cleanup rejects invented words in short transcripts as well as lost words; sentence-leading Spanish `pregunta` deterministically produces `¿...?` punctuation around the original question content even when the LLM adds words or emits a statement.
 V24: Audio history defaults off; enabled history preserves exact uploaded bytes, raw ASR text, final text, request/model metadata, and failed-request status under one server-generated ID; tokens, prompt content, filenames, and transcript bodies remain absent from logs.
 V25: History directories use 0700 and files use 0600; finite positive count/age/byte limits evict oldest records on writes, startup, and periodic idle cleanup. Storage failures never fail transcription; invalid/unauthorized uploads create no records.
+V26: Cleanup joins consecutive spoken Spanish or English single digits after an explicit hyphen/underscore in a clear technical code or isolated literal, preserving digit order and leading zeros; unchanged LLM output receives the same repair, altered digits or surrounding words are rejected, and ordinary counts remain unchanged.
 
 §T
 id|status|task|detail|cites
@@ -80,3 +81,4 @@ B6|2026-09-23|Qwen forwarded Android AAC/M4A to librosa 1.0 and libsndfile, whic
 B7|2026-09-25|Cleanup safety guard compared spoken number words against digits as unrelated tokens and restored raw transcript even when LLM produced equivalent 4.58.0|V20
 B8|2026-09-25|English spelling control existed but parser recognized only literal letters and Spanish letter names; spoken English names remained unjoined|V21
 B9|2026-09-28|Meaningful-word guard checked only retained input words, so cleanup could insert `por qué` into a short question; leading `pregunta` punctuation depended on LLM output|V23
+B10|2026-09-30|Safety guard compared individually spoken code digits with a joined number as unequal content and discarded the entire correction, including the explicit hyphen|V26
