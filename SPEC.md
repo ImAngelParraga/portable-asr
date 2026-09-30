@@ -23,6 +23,7 @@ I.postprocess: `POST /v1/text/postprocess` and `POST /v1/chat/completions` expos
 I.config: `ASR_POSTPROCESS_*` owns provider/model/token/timeout/prompt/failure policy; clients never receive these secrets.
 I.models: `model=qwen3-asr-1.7b` selects resident Qwen3-ASR when `ASR_QWEN_ENABLED=1`; all other legacy model values select Whisper. `ASR_QWEN_*` configures checkpoint, interpreter, and GPU placement.
 I.catalog: Authenticated `GET /v1/audio/models` lists transcription model IDs in OpenAI list format; `GET /v1/models` keeps its broader compatibility catalog.
+I.history: Optional `ASR_AUDIO_HISTORY_*` settings enable local diagnostic records; successful archived audio responses add `request_id`, failed archived requests return `X-Request-ID`. No HTTP archive access.
 
 §V
 V1: Audio processing order is fixed and tested: validate request → transcribe with optional `language`/`prompt` context → optional conservative cleanup → optional explicitly requested translation → response.
@@ -48,6 +49,8 @@ V20: Cleanup accepts digit formatting of equivalent spoken Spanish and English c
 V21: Explicit `deletreo ... fin de deletreo` / `spell ... end spelling` controls join Spanish or English letter names and single-letter transcripts into one word without consuming following speech; unclear or incomplete controls remain literal, spelled words survive cleanup, and block capitals become ordinary word case.
 V22: List controls accept documented bullet/numbered aliases and next-item aliases while preserving item content, order, and introduction.
 V23: Cleanup rejects invented words in short transcripts as well as lost words; sentence-leading Spanish `pregunta` deterministically produces `¿...?` punctuation around the original question content even when the LLM adds words or emits a statement.
+V24: Audio history defaults off; enabled history preserves exact uploaded bytes, raw ASR text, final text, request/model metadata, and failed-request status under one server-generated ID; tokens, prompt content, filenames, and transcript bodies remain absent from logs.
+V25: History directories use 0700 and files use 0600; finite positive count/age/byte limits evict oldest records on writes, startup, and periodic idle cleanup. Storage failures never fail transcription; invalid/unauthorized uploads create no records.
 
 §T
 id|status|task|detail|cites
@@ -64,6 +67,7 @@ T10|x|Decode Qwen client audio|Normalize uploaded AAC/M4A and WAV through FFmpeg
 T11|x|Protect numeric formatting|Canonicalize equivalent spoken cardinals for cleanup safety checks and test version numbers, surrounding words, and wrong values.|I.postprocess,V20
 T12|x|Join explicitly spelled words|Prepare delimited Spanish/English spelling before cleanup, protect letter order and case, and test unknown or incomplete controls.|I.postprocess,V21
 T13|x|Expand spoken list controls|Accept bullet/numbered and next-item voice aliases, document the syntax, and test output structure.|I.postprocess,V22
+T14|x|Retain recent diagnostic audio|Add optional bounded local audio history, raw/final text and failure metadata, request IDs, idle expiry, private permissions, and offline regression tests.|I.history,I.transcribe,V8,V9,V24,V25
 
 §B
 id|date|cause|fix

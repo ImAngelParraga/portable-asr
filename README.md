@@ -81,6 +81,24 @@ Clear comma-separated short items also work. Use `nuevo ítem` / `new item` when
 
 For a difficult word, say `deletreo`, speak letter names, then say `fin de deletreo`. Example: `escribe deletreo eme a erre i a fin de deletreo aquí` becomes `Escribe maria aquí.` In English, say `spell M A R I A end spelling` or `spell em ay ar eye ay end spelling`; both produce `maria`. The service joins the letters into one word and uses normal case. It can add an accent when context makes it clear; say the accent explicitly when exact spelling matters. The closing phrase is required so following words remain separate. Unknown letter names leave the span unchanged.
 
+## Recent Audio Diagnostics
+
+Audio history is disabled by default. To diagnose recognition and cleanup separately, enable bounded local retention in the service environment:
+
+```env
+ASR_AUDIO_HISTORY_ENABLED=1
+ASR_AUDIO_HISTORY_DIR=/opt/portable-asr/audio-history
+ASR_AUDIO_HISTORY_MAX_FILES=20
+ASR_AUDIO_HISTORY_MAX_AGE_SECONDS=86400
+ASR_AUDIO_HISTORY_MAX_BYTES=268435456
+```
+
+Choose a directory writable by the service user and allowed by any systemd filesystem restrictions. Restart the service after changing settings. Every authenticated, accepted audio request creates a directory named with its server-generated request ID. It contains the original upload as `audio.<extension>` and `metadata.json` with UTC creation time, engine/model, language, temperature, prompt length, processing status, raw ASR text, final text, and timings. Failed inference or cleanup retains the available audio/text with an error type and HTTP status; exception messages, original filenames, bearer tokens, and prompt contents are excluded.
+
+Successful archived responses include `request_id`; failed archived responses include the `X-Request-ID` header. Logs contain the ID and operational diagnostics, never audio or transcript bodies. Inspect the matching directory locally to compare the recording with `raw_text` and `final_text`. The service provides no archive download endpoint. Records left incomplete after a process crash remain available until normal eviction.
+
+Directories use mode `0700`; audio and metadata files use `0600`. Oldest records are removed when any count, age, or total file-byte limit is reached. Limits must be positive. Cleanup runs on writes and every 60 seconds, including startup and idle periods, while history is enabled and the service is running. Storage failures preserve normal transcription behavior and emit a diagnostic without sensitive content. Record IDs can outlive their files after eviction. Disabling capture or stopping the service stops periodic cleanup; delete existing records locally if they must be removed immediately. Keep diagnostic data outside source control.
+
 ## Configuration Profiles
 
 Start from one profile and copy it to your runtime env file:

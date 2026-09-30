@@ -12,6 +12,7 @@ import uuid
 import gc
 import re
 import select
+import shutil
 import tempfile
 import threading
 import asyncio
@@ -23,6 +24,7 @@ import urllib.request
 import urllib.parse
 from pathlib import Path
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -47,6 +49,11 @@ ASR_BEARER_TOKEN = os.environ.get("ASR_BEARER_TOKEN", "")
 ASR_CPU_THREADS = int(os.environ.get("ASR_CPU_THREADS", "4"))
 ASR_NUM_WORKERS = int(os.environ.get("ASR_NUM_WORKERS", "1"))
 ASR_MAX_FILE_SIZE = int(os.environ.get("ASR_MAX_FILE_SIZE", str(25 * 1024 * 1024)))  # 25 MB
+ASR_AUDIO_HISTORY_ENABLED = os.environ.get("ASR_AUDIO_HISTORY_ENABLED", "0") == "1"
+ASR_AUDIO_HISTORY_DIR = os.environ.get("ASR_AUDIO_HISTORY_DIR", "/opt/portable-asr/audio-history")
+ASR_AUDIO_HISTORY_MAX_FILES = int(os.environ.get("ASR_AUDIO_HISTORY_MAX_FILES", "20"))
+ASR_AUDIO_HISTORY_MAX_AGE_SECONDS = int(os.environ.get("ASR_AUDIO_HISTORY_MAX_AGE_SECONDS", "86400"))
+ASR_AUDIO_HISTORY_MAX_BYTES = int(os.environ.get("ASR_AUDIO_HISTORY_MAX_BYTES", str(256 * 1024 * 1024)))
 ASR_REQUEST_TIMEOUT = int(os.environ.get("ASR_REQUEST_TIMEOUT", "120"))
 ASR_MAX_CONCURRENCY = int(os.environ.get("ASR_MAX_CONCURRENCY", "1"))
 ASR_BUSY_WAIT_TIMEOUT = int(os.environ.get("ASR_BUSY_WAIT_TIMEOUT", "600"))
@@ -102,6 +109,7 @@ _whisper_worker_lock = threading.RLock()
 _whisper_worker_process = None
 _qwen_worker_lock = threading.RLock()
 _qwen_worker_process = None
+_audio_history_lock = threading.RLock()
 
 security = HTTPBearer(auto_error=False)
 
@@ -141,6 +149,131 @@ def _validate_runtime_config() -> list[str]:
     if ASR_DEVICE == "cpu" and ASR_COMPUTE_TYPE == "float16":
         warnings.append("ASR_COMPUTE_TYPE=float16 is usually invalid for CPU; use int8 or int8_float32")
     return warnings
+
+# ---- Optional local diagnostic audio history ----
+
+def _audio_history_root() -> Path:
+    if not ASR_AUDIO_HISTORY_DIR.strip() or min(
+        ASR_AUDIO_HISTORY_MAX_FILES,
+        ASR_AUDIO_HISTORY_MAX_AGE_SECONDS,
+        ASR_AUDIO_HISTORY_MAX_BYTES,
+    ) <= 0:
+        raise ValueError("audio history requires a directory and positive retention limits")
+    root = Path(ASR_AUDIO_HISTORY_DIR)
+    if root.is_symlink():
+        raise ValueError("audio history directory must not be a symlink")
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    root.chmod(0o700)
+    return root
+
+def _audio_history_prune_locked(root: Path) -> None:
+    """Remove only service-generated records, oldest first; caller holds lock."""
+    records = []
+    now = time.time()
+    for directory in root.iterdir():
+        match = re.fullmatch(r"(\d{20})_[0-9a-f]{32}", directory.name)
+        if not match or directory.is_symlink() or not directory.is_dir():
+            continue
+        created_at = int(match.group(1)) / 1e9
+        if now - created_at >= ASR_AUDIO_HISTORY_MAX_AGE_SECONDS:
+            shutil.rmtree(directory)
+            continue
+        size = sum(file.lstat().st_size for file in directory.iterdir())
+        records.append((directory, created_at, size))
+    records.sort(key=lambda record: (record[1], record[0].name))
+    total_bytes = sum(record[2] for record in records)
+    count = len(records)
+    for directory, _, size in records:
+        if count <= ASR_AUDIO_HISTORY_MAX_FILES and total_bytes <= ASR_AUDIO_HISTORY_MAX_BYTES:
+            break
+        shutil.rmtree(directory)
+        total_bytes -= size
+        count -= 1
+
+def _audio_history_prune() -> None:
+    if not ASR_AUDIO_HISTORY_ENABLED:
+        return
+    try:
+        with _audio_history_lock:
+            _audio_history_prune_locked(_audio_history_root())
+    except Exception as exc:
+        print(f"[asr] audio history cleanup failed error_type={type(exc).__name__}")
+
+def _audio_history_update(record: dict, **fields) -> None:
+    """Write metadata atomically; never recreate an expired or evicted record."""
+    with _audio_history_lock:
+        directory = Path(ASR_AUDIO_HISTORY_DIR) / record["request_id"]
+        if not directory.is_dir() or directory.is_symlink():
+            return
+        record.update(fields)
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory, delete=False) as output:
+                temp_path = Path(output.name)
+                os.fchmod(output.fileno(), 0o600)
+                json.dump(record, output, ensure_ascii=False, indent=2)
+                output.write("\n")
+            os.replace(temp_path, directory / "metadata.json")
+            _audio_history_prune_locked(directory.parent)
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+
+def _audio_history_start(contents: bytes, suffix: str, metadata: dict) -> dict | None:
+    if not ASR_AUDIO_HISTORY_ENABLED:
+        return None
+    directory = None
+    try:
+        with _audio_history_lock:
+            root = _audio_history_root()
+            _audio_history_prune_locked(root)
+            if len(contents) > ASR_AUDIO_HISTORY_MAX_BYTES:
+                print("[asr] audio history skipped reason=audio_exceeds_byte_limit")
+                return None
+            created_ns = time.time_ns()
+            request_id = f"{created_ns:020d}_{uuid.uuid4().hex}"
+            directory = root / request_id
+            directory.mkdir(mode=0o700)
+            suffix = suffix if re.fullmatch(r"\.[A-Za-z0-9.]{1,16}", suffix) else ".bin"
+            audio_file = f"audio{suffix}"
+            with (directory / audio_file).open("xb") as audio:
+                os.fchmod(audio.fileno(), 0o600)
+                audio.write(contents)
+            record = {
+                **metadata,
+                "request_id": request_id,
+                "created_at": datetime.fromtimestamp(created_ns / 1e9, timezone.utc).isoformat(),
+                "audio_file": audio_file,
+                "audio_bytes": len(contents),
+                "status": "pending",
+                "raw_text": None,
+                "final_text": None,
+            }
+            _audio_history_update(record)
+            if directory.is_dir():
+                print(f"[asr] audio history saved request_id={request_id}")
+                return record
+            return None
+    except Exception as exc:
+        print(f"[asr] audio history capture failed error_type={type(exc).__name__}")
+        if directory is not None:
+            shutil.rmtree(directory, ignore_errors=True)
+        return None
+
+def _audio_history_update_safe(record: dict | None, **fields) -> None:
+    if record is None:
+        return
+    try:
+        _audio_history_update(record, **fields)
+    except Exception as exc:
+        print(f"[asr] audio history metadata failed request_id={record['request_id']} error_type={type(exc).__name__}")
+
+def _audio_history_watcher_loop(stop: threading.Event) -> None:
+    # Expire records at startup and within 60 seconds of their age limit, even idle.
+    while not stop.is_set():
+        _audio_history_prune()
+        if stop.wait(60):
+            break
 
 DEFAULT_POSTPROCESS_PROMPT = """Clean this transcript.
 
@@ -1963,7 +2096,13 @@ async def lifespan(app: FastAPI):
         print(f"[asr] config warning: {warning}")
     if _gpu_watch_enabled():
         threading.Thread(target=_llm_watcher_loop, daemon=True, name="llm-watcher").start()
-    yield
+    history_stop = threading.Event()
+    if ASR_AUDIO_HISTORY_ENABLED:
+        threading.Thread(target=_audio_history_watcher_loop, args=(history_stop,), daemon=True, name="audio-history-watcher").start()
+    try:
+        yield
+    finally:
+        history_stop.set()
     # Shutdown
     _stop_whisper_worker("ASR service shutdown")
     _stop_qwen_worker("ASR service shutdown")
@@ -2156,6 +2295,7 @@ async def transcriptions(
     await _acquire_concurrency_slot("transcription")
 
     temp_path = None
+    history_record = None
     try:
         write_started = time.monotonic()
         # Save to a safe temp file with original extension
@@ -2170,6 +2310,23 @@ async def transcriptions(
             tmp.write(contents)
             temp_path = tmp.name
         write_ms = _timing_ms(write_started)
+
+        history_record = await asyncio.get_event_loop().run_in_executor(
+            None,
+            _audio_history_start,
+            contents,
+            suffix,
+            {
+                "engine": engine,
+                "model": model,
+                "asr_model": ASR_QWEN_CHECKPOINT if engine == "qwen" else ASR_MODEL_SIZE,
+                "language": language,
+                "temperature": temperature,
+                "prompt_chars": len(transcription_prompt or ""),
+                "postprocess_enabled": ASR_POSTPROCESS_ENABLED,
+                "postprocess_model": ASR_POSTPROCESS_MODEL if ASR_POSTPROCESS_ENABLED else None,
+            },
+        )
 
         if ASR_STOP_LLM_FOR_TRANSCRIPTION:
             _stop_llm_server("Whisper transcription requested")
@@ -2193,6 +2350,7 @@ async def transcriptions(
             raise HTTPException(status_code=504, detail="Transcription timed out")
 
         full_text = " ".join(text_parts).strip()
+        await asyncio.to_thread(_audio_history_update_safe, history_record, raw_text=full_text, status="recognized")
 
         # If no segments, return empty
         if not full_text:
@@ -2224,6 +2382,7 @@ async def transcriptions(
         if engine == "whisper":
             timings["whisper_total_ms"] = transcribe_total_ms
         timings.update(engine_timings)
+        await asyncio.to_thread(_audio_history_update_safe, history_record, final_text=full_text, status="complete", timings=timings)
         print(
             "[asr] transcription timing "
             f"engine={engine} bytes={audio_bytes} language={language or 'auto'} chars={len(full_text)} "
@@ -2231,15 +2390,23 @@ async def transcriptions(
         )
 
         # Return OpenAI-compatible JSON
-        return {
+        response = {
             "text": full_text,
             "timings": timings,
         }
+        if history_record is not None:
+            response["request_id"] = history_record["request_id"]
+        return response
 
-    except HTTPException:
+    except HTTPException as exc:
+        await asyncio.to_thread(_audio_history_update_safe, history_record, status="failed", error_type=type(exc).__name__, error_status=exc.status_code)
+        if history_record is not None:
+            exc.headers = {**(exc.headers or {}), "X-Request-ID": history_record["request_id"]}
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        await asyncio.to_thread(_audio_history_update_safe, history_record, status="failed", error_type=type(e).__name__, error_status=500)
+        headers = {"X-Request-ID": history_record["request_id"]} if history_record is not None else None
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}", headers=headers)
     finally:
         # Cleanup temp file
         if temp_path and os.path.exists(temp_path):

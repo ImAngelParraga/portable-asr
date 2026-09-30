@@ -21,6 +21,7 @@ __pycache__/
 *.sock
 *.tmp
 models/
+audio-history/
 hf-cache/
 downloads/
 llama.cpp/
