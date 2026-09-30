@@ -74,6 +74,34 @@ class SpokenNumbersAndSpellingTest(unittest.TestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(self.postprocess(raw, raw), raw)
 
+    def test_v27_spoken_alphanumeric_table_prefix_survives_cleanup(self):
+        raw = "Creo que en la tabla b dos b barra baja sample barra baja game barra baja history ya tenemos estos campos. Me gustaría que hicieras algo similar."
+        expected = "Creo que en la tabla b2b_sample_game_history ya tenemos estos campos. Me gustaría que hicieras algo similar."
+        for output in (expected, raw, expected.replace("b2b_sample_game_history", "b2b sample game history")):
+            with self.subTest(output=output):
+                self.assertEqual(self.postprocess(raw, output), expected)
+
+    def test_v27_bilingual_alphanumeric_prefix_and_leading_zeros(self):
+        for raw, expected in (
+            ("table b two b underscore records", "table b2b_records"),
+            ("tabla x cero cero uno y guion history", "tabla x001y-history"),
+            ("b dos b barra baja history", "b2b_history"),
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(self.postprocess(raw, expected), expected)
+                self.assertEqual(self.postprocess(raw, raw), expected)
+
+    def test_v27_wrong_table_number_or_surrounding_content_is_rejected(self):
+        raw = "tabla b dos b barra baja history mañana"
+        for output in ("tabla b3b_history mañana", "tabla b2b_history hoy", "tabla b2b_archive mañana"):
+            with self.subTest(output=output):
+                self.assertEqual(self.postprocess(raw, output), "tabla b2b_history mañana")
+
+    def test_v27_ordinary_spoken_letters_and_numbers_remain_literal(self):
+        for raw in ("de a dos b", "b dos b", "dijo b dos b guion history ayer"):
+            with self.subTest(raw=raw):
+                self.assertEqual(asr_server._prepare_spoken_alphanumeric_literals(raw), raw)
+
     def test_v21_spelling_joins_lowercase_in_sentence(self):
         raw = "escribe deletreo eme a erre i a fin de deletreo aquí"
         self.assertEqual(asr_server._prepare_spelled_words(raw), "escribe maria aquí")

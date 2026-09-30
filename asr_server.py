@@ -1472,6 +1472,8 @@ def _lowercase_joined_technical_literals(text: str) -> str:
 
 def _repair_technical_literal_format(raw_text: str, corrected: str) -> str:
     """Apply deterministic formatting for spoken technical literals."""
+    raw_text = _prepare_spoken_alphanumeric_literals(raw_text)
+    corrected = _prepare_spoken_alphanumeric_literals(corrected)
     for match in _SPOKEN_CODE_DIGITS_RE.finditer(raw_text):
         value = _spoken_code_digit_value(raw_text, match)
         if value == match.group(0):
@@ -1724,6 +1726,31 @@ _SPOKEN_DIGITS = {
     if value < 10
 }
 _SPOKEN_DIGIT_PATTERN = "|".join(map(re.escape, _SPOKEN_DIGITS))
+_SPOKEN_ALPHANUMERIC_LITERAL_RE = re.compile(
+    r"(?<!\w)(?P<left>[^\W\d_])\s+"
+    rf"(?P<digits>\b(?:{_SPOKEN_DIGIT_PATTERN})\b"
+    rf"(?:\s+\b(?:{_SPOKEN_DIGIT_PATTERN})\b)*)\s+"
+    r"(?P<right>[^\W\d_])"
+    rf"(?P<tail>(?:\s+(?:{_TECH_SPOKEN_SYMBOL_PATTERN})\s+{_TECH_TOKEN_PATTERN})+)(?!\w)",
+    re.IGNORECASE,
+)
+
+def _prepare_spoken_alphanumeric_literals(text: str) -> str:
+    """Join letter/digit/letter prefixes only inside clear technical literals."""
+    def replace(match: re.Match) -> str:
+        words, symbols = _technical_literal_parts(match.group("right") + match.group("tail"))
+        if not _spoken_literal_is_high_confidence(text, match, words, symbols):
+            return match.group(0)
+        digits = "".join(
+            _SPOKEN_DIGITS[word.lower()] for word in match.group("digits").split()
+        )
+        return (
+            match.group("left").lower() + digits + match.group("right").lower()
+            + match.group("tail")
+        )
+
+    return _SPOKEN_ALPHANUMERIC_LITERAL_RE.sub(replace, text)
+
 _SPOKEN_CODE_DIGITS_RE = re.compile(
     rf"(?<!\w)(?P<identifier>{_TECH_TOKEN_PATTERN})\s+"
     r"(?P<separator>hyphen|dash|guion|guión|underscore|guion bajo|guión bajo|barra baja)\s+"
@@ -2055,9 +2082,11 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
-    prepared_text = _prepare_formatted_list_transcript(
-        _prepare_spoken_code_digits(_prepare_spelled_words(raw_text))
-    )
+    prepared_text = _prepare_spelled_words(raw_text)
+    alphanumeric_text = _prepare_spoken_alphanumeric_literals(prepared_text)
+    if alphanumeric_text != prepared_text:
+        prepared_text = _repair_spoken_technical_literals(alphanumeric_text, alphanumeric_text)
+    prepared_text = _prepare_formatted_list_transcript(_prepare_spoken_code_digits(prepared_text))
     system_prompt = instruction.strip() if instruction and instruction.strip() else DEFAULT_POSTPROCESS_PROMPT
     user_prompt = prepared_text if direct_prompt else f"Raw transcript:\n{prepared_text}\n\nCorrected transcript:"
     max_tokens = max(64, min(4096, len(raw_text) // 2 + 128))

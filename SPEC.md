@@ -52,6 +52,7 @@ V23: Cleanup rejects invented words in short transcripts as well as lost words; 
 V24: Audio history defaults off; enabled history preserves exact uploaded bytes, raw ASR text, final text, request/model metadata, and failed-request status under one server-generated ID; tokens, prompt content, filenames, and transcript bodies remain absent from logs.
 V25: History directories use 0700 and files use 0600; finite positive count/age/byte limits evict oldest records on writes, startup, and periodic idle cleanup. Storage failures never fail transcription; invalid/unauthorized uploads create no records.
 V26: Cleanup joins consecutive spoken Spanish or English single digits after an explicit hyphen/underscore in a clear technical code or isolated literal, preserving digit order and leading zeros; unchanged LLM output receives the same repair, altered digits or surrounding words are rejected, and ordinary counts remain unchanged.
+V27: In clear technical literals with explicit separators, cleanup joins single-letter/spoken-digit/single-letter prefixes such as `b dos b` or `b two b` into `b2b` before safety comparison and separator repair; digit order, leading zeros, suffix words, and surrounding content are preserved, altered identifiers are rejected, and ordinary prose remains literal.
 
 §T
 id|status|task|detail|cites
@@ -82,3 +83,4 @@ B7|2026-09-25|Cleanup safety guard compared spoken number words against digits a
 B8|2026-09-25|English spelling control existed but parser recognized only literal letters and Spanish letter names; spoken English names remained unjoined|V21
 B9|2026-09-28|Meaningful-word guard checked only retained input words, so cleanup could insert `por qué` into a short question; leading `pregunta` punctuation depended on LLM output|V23
 B10|2026-09-30|Safety guard compared individually spoken code digits with a joined number as unequal content and discarded the entire correction, including the explicit hyphen|V26
+B11|2026-09-30|Technical parser started at the last letter of a spaced alphanumeric prefix; safety guard treated `b dos b` and `b2b` as unequal content and restored unformatted table names|V27
