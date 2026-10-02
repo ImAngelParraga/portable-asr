@@ -81,6 +81,12 @@ Clear comma-separated short items also work. Use `nuevo ítem` / `new item` when
 
 For a difficult word, say `deletreo`, speak letter names, then say `fin de deletreo`. Example: `escribe deletreo eme a erre i a fin de deletreo aquí` becomes `Escribe maria aquí.` In English, say `spell M A R I A end spelling` or `spell em ay ar eye ay end spelling`; both produce `maria`. The service joins the letters into one word and uses normal case. It can add an accent when context makes it clear; say the accent explicitly when exact spelling matters. The closing phrase is required so following words remain separate. Unknown letter names leave the span unchanged.
 
+## Spoken Class And Project Names
+
+With post-processing enabled, `class task controller` / `clase task controller` becomes `class TaskController` / `clase TaskController`. This conservative rule accepts two to four name words ending in `Controller`, `Manager`, `Handler`, `Factory`, `Builder`, `Adapter`, `Provider`, or `Repository`, followed by punctuation, sentence end, or a clear clause boundary. Existing identifiers, explicit separators, and ambiguous prose remain unchanged. Class names are prepared before cleanup and protected against LLM replacement.
+
+For project names, say separators explicitly: `project demo hyphen tools` becomes `project demo-tools`; `proyecto demo guion bajo tools` becomes `proyecto demo_tools`. Technical cue words remain ordinary nouns inside a sentence. Exact unconventional spelling still requires vocabulary context or spelling controls.
+
 ## Recent Audio Diagnostics
 
 Audio history is disabled by default. To diagnose recognition and cleanup separately, enable bounded local retention in the service environment:

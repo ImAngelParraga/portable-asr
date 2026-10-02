@@ -54,6 +54,9 @@ V25: History directories use 0700 and files use 0600; finite positive count/age/
 V26: Cleanup joins consecutive spoken Spanish or English single digits after an explicit hyphen/underscore in a clear technical code or isolated literal, preserving digit order and leading zeros; unchanged LLM output receives the same repair, altered digits or surrounding words are rejected, and ordinary counts remain unchanged.
 V27: In clear technical literals with explicit separators, cleanup joins single-letter/spoken-digit/single-letter prefixes such as `b dos b` or `b two b` into `b2b` before safety comparison and separator repair; digit order, leading zeros, suffix words, and surrounding content are preserved, altered identifiers are rejected, and ordinary prose remains literal.
 
+V28: Explicit project/proyecto context reconstructs spoken technical separators through full cleanup even when the LLM preserves spoken commands or emits spaces; ordinary prose remains literal and in-sentence technical cue casing follows source.
+V29: Explicit class/clase followed by two to four name words ending in a conventional class-role suffix and a clear boundary joins PascalCase before LLM and safety comparison; exact source words and repetitions are protected after cleanup, inline-code wrappers are removed only around recognized names, existing identifiers and explicit separators remain intact, and ambiguous names or prose remain literal.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -71,6 +74,8 @@ T12|x|Join explicitly spelled words|Prepare delimited Spanish/English spelling b
 T13|x|Expand spoken list controls|Accept bullet/numbered and next-item voice aliases, document the syntax, and test output structure.|I.postprocess,V22
 T14|x|Retain recent diagnostic audio|Add optional bounded local audio history, raw/final text and failure metadata, request IDs, idle expiry, private permissions, and offline regression tests.|I.history,I.transcribe,V8,V9,V24,V25
 
+T15|x|Repair class and project literals|Recognize bilingual project cues; prepare and protect bounded PascalCase class-role names; test full cleanup, source cue case, and ambiguous prose.|I.postprocess,C3,C7,V28,V29
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -84,3 +89,5 @@ B8|2026-09-25|English spelling control existed but parser recognized only litera
 B9|2026-09-28|Meaningful-word guard checked only retained input words, so cleanup could insert `por qué` into a short question; leading `pregunta` punctuation depended on LLM output|V23
 B10|2026-09-30|Safety guard compared individually spoken code digits with a joined number as unequal content and discarded the entire correction, including the explicit hyphen|V26
 B11|2026-09-30|Technical parser started at the last letter of a spaced alphanumeric prefix; safety guard treated `b dos b` and `b2b` as unequal content and restored unformatted table names|V27
+B12|2026-10-02|Technical cue list omitted project/proyecto and restored explicitly spoken hyphens; class-role names had no deterministic joining and cleanup capitalized cue words|V28,V29
+B13|2026-10-02|Live cleanup wrapped identifiers in inline code; class protection rejected equivalent formatting and restored prepared text with spoken separators|V28,V29

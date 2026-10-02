@@ -340,8 +340,9 @@ Spoken punctuation and technical literals:
    - semicolon / punto y coma -> ;
 15. Reconstruct URLs, emails, file paths, command flags, and identifiers only when the transcript clearly contains a technical literal.
    Technical-context cues work in both English and Spanish:
-   - English: variable, field, identifier, file, filename, name, token, key, column, table, class, function, method, endpoint, folder, directory, path, document.
-   - Spanish: variable, campo, identificador, archivo, fichero, nombre, token, clave, columna, tabla, clase, función, método, endpoint, carpeta, directorio, ruta, documento.
+   - English: variable, field, identifier, file, filename, name, token, key, column, table, class, function, method, endpoint, folder, directory, path, document, project.
+   - Spanish: variable, campo, identificador, archivo, fichero, nombre, token, clave, columna, tabla, clase, función, método, endpoint, carpeta, directorio, ruta, documento, proyecto.
+   Keep prepared PascalCase class identifiers intact. Technical cue words such as class and project are ordinary nouns, not parts of the identifier.
 16. Inside technical literals, convert spoken symbols to symbols and remove unnecessary spaces:
    - dot / punto -> .
    - slash / barra -> /
@@ -1299,12 +1300,91 @@ _TECHNICAL_CUE_PATTERN = (
     r"variable|field|campo|identifier|identificador|file|archivo|fichero|"
     r"filename|name|nombre|token|key|clave|column|columna|table|tabla|"
     r"class|clase|function|función|funcion|method|método|metodo|endpoint|"
-    r"folder|carpeta|directory|directorio|path|ruta|document|documento"
+    r"folder|carpeta|directory|directorio|path|ruta|document|documento|project|proyecto"
 )
 _TECH_LITERAL_SEQUENCE_RE = re.compile(
     rf"(?<!\w){_TECH_TOKEN_PATTERN}(?:\s+(?:{_TECH_SPOKEN_SYMBOL_PATTERN})\s+{_TECH_TOKEN_PATTERN})+(?!\w)",
     re.IGNORECASE,
 )
+
+# Infer conventional class names only with an explicit cue and a clear boundary.
+_CLASS_NAME_WORD = (
+    r"(?!(?:of|the|a|an|and|or|de|del|la|el|los|las|un|una|y|o|"
+    r"is|are|es|son|in|en|hyphen|dash|underscore|guion|guión|bajo|"
+    r"dot|punto|slash|barra|backslash|colon|at|arroba)\b)[^\W\d_]+"
+)
+_SPOKEN_CLASS_NAME_RE = re.compile(
+    rf"\b(?P<cue>class|clase)[ \t]+"
+    rf"(?P<name>(?:{_CLASS_NAME_WORD}[ \t]+){{1,3}}"
+    r"(?:controller|manager|handler|factory|builder|adapter|provider|repository))"
+    r"(?=$|[ \t]*[.,!?;:)]|[ \t]+(?:in|en|of|de|del|with|con|for|para|"
+    r"is|es|was|era|and|y|or|o)\b)",
+    re.IGNORECASE,
+)
+
+
+def _repair_spoken_class_identifiers(raw_text: str, corrected: str) -> str:
+    """Join bounded class-role names without guessing arbitrary identifiers."""
+    for match in _SPOKEN_CLASS_NAME_RE.finditer(raw_text):
+        words = match.group("name").split()
+        identifier = "".join(word[:1].upper() + word[1:] for word in words)
+        spaced = r"[ \t]+".join(re.escape(word) for word in words)
+        pattern = re.compile(
+            rf"\b(?P<cue>{re.escape(match.group('cue'))})[ \t]+"
+            rf"(?P<quote>`?)(?:{spaced}|{re.escape(identifier)})(?P=quote)(?!\w)",
+            re.IGNORECASE,
+        )
+
+        def replace(candidate: re.Match) -> str:
+            cue = candidate.group("cue")
+            prefix = raw_text[:match.start()].strip().rstrip('"\'(')
+            if prefix and not prefix.endswith((".", "!", "?")):
+                cue = match.group("cue")
+            return f"{cue} {identifier}"
+
+        corrected = pattern.sub(replace, corrected)
+    return corrected
+
+
+def _protect_spoken_class_identifiers(raw_text: str, prepared_text: str, corrected: str) -> str:
+    """Reject changed class names even when surrounding prose passes the word guard."""
+    required = {}
+    for match in _SPOKEN_CLASS_NAME_RE.finditer(raw_text):
+        identifier = "".join(
+            word[:1].upper() + word[1:] for word in match.group("name").split()
+        )
+        key = (match.group("cue").lower(), identifier)
+        required[key] = required.get(key, 0) + 1
+    for (cue, identifier), count in required.items():
+        pattern = rf"\b{re.escape(cue)}[ \t]+{re.escape(identifier)}(?!\w)"
+        if len(re.findall(pattern, corrected, re.IGNORECASE)) < count:
+            return prepared_text
+    return corrected
+
+
+def _restore_technical_cue_case(raw_text: str, literal_start: int, value: str, corrected: str) -> str:
+    """Preserve source cue casing inside sentences next to a repaired literal."""
+    cue = re.search(
+        rf"\b(?P<cue>{_TECHNICAL_CUE_PATTERN})[ \t]+$",
+        raw_text[:literal_start], re.IGNORECASE,
+    )
+    if cue is None:
+        return corrected
+    prefix = raw_text[:cue.start()].strip().rstrip('"\'(')
+
+    def replace(match: re.Match) -> str:
+        corrected_cue = match.group("cue")
+        if prefix and not prefix.endswith((".", "!", "?")):
+            corrected_cue = cue.group("cue")
+        return corrected_cue + match.group("space") + value
+
+    return re.sub(
+        rf"\b(?P<cue>{re.escape(cue.group('cue'))})(?P<space>[ \t]+)"
+        rf"(?P<quote>`?){re.escape(value)}(?P=quote)(?!\w)",
+        replace,
+        corrected, count=1, flags=re.IGNORECASE,
+    )
+
 
 def _spoken_symbol_to_literal(symbol: str) -> str:
     normalized = _normalized_plain_text(symbol)
@@ -1459,6 +1539,7 @@ def _repair_spoken_technical_literals(raw_text: str, corrected: str) -> str:
             for _ in spoken_symbols
         ]
         corrected = _technical_literal_pattern(words, spoken_separators).sub(value, corrected)
+        corrected = _restore_technical_cue_case(raw_text, match.start(), value, corrected)
     return corrected
 
 def _lowercase_joined_technical_literals(text: str) -> str:
@@ -1472,6 +1553,7 @@ def _lowercase_joined_technical_literals(text: str) -> str:
 
 def _repair_technical_literal_format(raw_text: str, corrected: str) -> str:
     """Apply deterministic formatting for spoken technical literals."""
+    corrected = _repair_spoken_class_identifiers(raw_text, corrected)
     raw_text = _prepare_spoken_alphanumeric_literals(raw_text)
     corrected = _prepare_spoken_alphanumeric_literals(corrected)
     for match in _SPOKEN_CODE_DIGITS_RE.finditer(raw_text):
@@ -2082,7 +2164,7 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
-    prepared_text = _prepare_spelled_words(raw_text)
+    prepared_text = _repair_spoken_class_identifiers(raw_text, _prepare_spelled_words(raw_text))
     alphanumeric_text = _prepare_spoken_alphanumeric_literals(prepared_text)
     if alphanumeric_text != prepared_text:
         prepared_text = _repair_spoken_technical_literals(alphanumeric_text, alphanumeric_text)
@@ -2138,6 +2220,7 @@ def _postprocess_transcript(
     corrected = _protect_spanish_pronoun_rewrite(raw_text, corrected)
     corrected = _protect_spanish_discourse_marker_rewrite(raw_text, corrected)
     corrected = _protect_spelled_words(raw_text, _prepare_spelled_words(raw_text), corrected)
+    corrected = _protect_spoken_class_identifiers(raw_text, prepared_text, corrected)
     corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
     corrected = _enforce_leading_question_directive(raw_text, corrected)
     _log_llm_postprocess_timing(result, raw_text, corrected)
