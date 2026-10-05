@@ -57,6 +57,16 @@ curl -sS \
 
 Keep prompts short and in the same language as the audio. Long or unrelated prompts can bias Whisper toward hallucinated words.
 
+## Questions In Dictation
+
+Default post-processing uses sentence context to restore Spanish direct questions and conversational requests, even when the ASR output ends with a period. For example, `puedes enviarme el archivo` normally becomes `¿Puedes enviarme el archivo?`. Indirect questions such as `no sé cómo funciona esto` remain statements. Cleanup changes punctuation and accents without inserting question words.
+
+For an ambiguous sentence, say `pregunta` at its beginning: `ya terminé. pregunta puedes revisarlo. luego hablamos.` becomes `Ya terminé. ¿Puedes revisarlo? Luego hablamos.` The control works at transcript start, after sentence punctuation, or after a line break. Each control applies only to its following sentence; repeated controls work independently. An ASR period immediately after the marker is accepted, and decimal points inside the question remain intact. Ordinary in-sentence uses of `pregunta` remain literal.
+
+Question controls are prepared before LLM cleanup and their boundaries are enforced afterward. If model output changes the words or merges the controlled sentence with surrounding speech, the service restores the prepared source text conservatively. Disabled or unavailable optional post-processing retains its existing raw-text fallback.
+
+The cleanup LLM receives text, not audio. It cannot recover intonation alone: an ambiguous `mañana vienes` stays declarative unless context or a control establishes a question. Automatic question formatting is model dependent; the explicit control provides a deterministic fallback. A bounded set of Spanish indirect-question and ability-explanation prefixes, including `no sé`, `dime cómo`, `con este permiso`, and `gracias a`, is protected against invented questions. Existing question punctuation or an explicit control overrides that protection.
+
 ## Spoken Formatted Lists
 
 When post-processing is enabled, bilingual voice controls can create Markdown lists:

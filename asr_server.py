@@ -363,6 +363,14 @@ Question control rules:
 21. Do not treat "pregunta" as a control marker when it appears inside a sentence.
 22. If the transcript contains "abre interrogación" and/or "cierra interrogación", replace them with ¿ and ? where appropriate.
 23. If a question is already obvious from the words, add the correct question marks even without a control marker.
+    - Decide independently for each sentence using its words and surrounding context. ASR periods are unreliable: a final period does not prove a sentence is a statement.
+    - In Spanish, recognize direct questions with qué, cómo, cuándo, dónde, cuál, quién, cuánto, or por qué, and conversational questions such as "hay alguna forma de...", "sabes si...", "te parece...", and "sería posible...".
+    - Standalone requests addressed to the listener such as "puedes enviarme..." or "podrías revisar..." normally take question marks. Preserve statements about ability when context clearly asserts it, such as "con este permiso puedes editar el archivo".
+    - Apply that request heuristic only to a sentence starting with puedes/podrías, not an embedded clause. Declarative explanations introduced by "con este permiso", "gracias a", "sé que", "me dijo que", or "porque" remain statements. Do not split off "puedes..." as a new question inside such an explanation.
+    - Indirect questions inside statements remain statements: "no sé cómo...", "me pregunto si...", "quería saber si...", "dime cómo...". An interrogative word alone is not enough.
+    - Do not guess unheard intonation. Ambiguous declarative wording such as "mañana vienes" stays declarative unless context or an explicit question marker establishes a question.
+    - Change punctuation and accents only; never insert question words, reorder words, or turn an indirect question into a direct one.
+    - A leading "pregunta" controls only its following sentence, including after a line break or a period after the marker. Preserve prepared ¿...? boundaries and leave following statements outside the question.
 
 Expression control rules:
 24. If the transcript contains a standalone laughter command, convert it to natural written laughter for the surrounding language:
@@ -385,6 +393,36 @@ Safety rules:
 Examples:
 Raw: pregunta como estas
 Clean: ¿cómo estás?
+
+Raw: Como funciona esto.
+Clean: ¿Cómo funciona esto?
+
+Raw: Hay alguna forma de mejorar esto.
+Clean: ¿Hay alguna forma de mejorar esto?
+
+Raw: Puedes enviarme el archivo.
+Clean: ¿Puedes enviarme el archivo?
+
+Raw: Ya terminé. Puedes revisarlo.
+Clean: Ya terminé. ¿Puedes revisarlo?
+
+Raw: Sabes si funciona en Linux.
+Clean: ¿Sabes si funciona en Linux?
+
+Raw: No sé cómo funciona esto.
+Clean: No sé cómo funciona esto.
+
+Raw: Quería saber si puedes enviarme el archivo.
+Clean: Quería saber si puedes enviarme el archivo.
+
+Raw: Dime cómo funciona esto.
+Clean: Dime cómo funciona esto.
+
+Raw: Con este permiso puedes editar el archivo.
+Clean: Con este permiso puedes editar el archivo.
+
+Raw: Mañana vienes.
+Clean: Mañana vienes.
 
 Raw: Si yo tuviera tiempo lo haría mañana pero ahora no puedo
 Clean: Si yo tuviera tiempo, lo haría mañana, pero ahora no puedo.
@@ -1214,29 +1252,135 @@ def _strip_reasoning_blocks(text: str) -> str:
         text = text.replace(marker, "")
     return text.strip().strip('"').strip()
 
-def _remove_question_directives(text: str) -> str:
-    """Remove sentence-leading pregunta markers if the LLM leaves them."""
-    directive = re.compile(r'(^|(?<=[.!?])\s+)(pregunta)\s*[,;:\-]*\s*', re.IGNORECASE)
-    return directive.sub(lambda match: match.group(1), text).strip()
+_QUESTION_DIRECTIVE_RE = re.compile(
+    r"(?P<prefix>^\s*|(?<=[.!?])\s+|\n[ \t]*)pregunta\b"
+    r"[ \t]*[,;:\-–—.]*[ \t]*(?:\n[ \t]*)?"
+    r"(?P<body>[^\s.!?][^\n]*?)"
+    r"(?P<end>[.!?](?=\s|$)|(?=\n|$))",
+    re.IGNORECASE,
+)
 
-def _enforce_leading_question_directive(raw_text: str, corrected: str) -> str:
-    """Keep a spoken leading question command even when cleanup misses it."""
-    marker = re.match(r'^\s*pregunta\b\s*[,;:\-]*\s*', raw_text, re.IGNORECASE)
-    if marker is None:
+
+def _remove_question_directives(text: str) -> str:
+    """Remove sentence-leading controls with content; preserve a bare marker."""
+    return _QUESTION_DIRECTIVE_RE.sub(
+        lambda match: (
+            match["prefix"] + match["body"] + match["end"]
+            if re.search(r"\w", match["body"]) else match[0]
+        ), text
+    ).strip()
+
+
+def _prepare_question_directives(text: str) -> str:
+    """Resolve explicit Spanish question scopes before model formatting."""
+    def replace(match: re.Match) -> str:
+        body = match["body"].strip().lstrip("¿").rstrip("?").strip()
+        if not re.search(r"\w", body):
+            return match[0]
+        return match["prefix"] + "¿" + body[0].upper() + body[1:] + "?"
+
+    return _QUESTION_DIRECTIVE_RE.sub(replace, text)
+
+
+def _enforce_question_directives(source_text: str, corrected: str) -> str:
+    """Restore source question scopes using word positions, never model guesses."""
+    if not _QUESTION_DIRECTIVE_RE.search(source_text):
         return corrected
-    if corrected == raw_text:
-        corrected = raw_text[marker.end():].strip()
+    expected = _repair_technical_literal_format(
+        source_text, _prepare_question_directives(source_text)
+    )
     corrected = _remove_question_directives(corrected)
-    first = re.match(r'^\s*[¿]?([^.!?\n]+?)[.!?]?(?=\s*$|\s+[A-ZÁÉÍÓÚÜÑ¿¡]|\n)', corrected)
-    if first is None:
-        first = re.match(r'^\s*[¿]?([^.!?\n]+)[.!?]?', corrected)
-    if first is None:
+    expected_words = list(re.finditer(r"\w+", expected))
+    corrected_words = list(re.finditer(r"\w+", corrected))
+    if (
+        [_normalized_plain_text(word[0]) for word in expected_words]
+        != [_normalized_plain_text(word[0]) for word in corrected_words]
+    ):
+        return expected
+
+    replacements = []
+    for question in re.finditer(r"¿([^?\n]+)\?", expected):
+        indices = [
+            index for index, word in enumerate(expected_words)
+            if question.start() < word.start() < question.end()
+        ]
+        if not indices:
+            continue
+        first, last = indices[0], indices[-1]
+        start, end = corrected_words[first].start(), corrected_words[last].end()
+        # A merged/split sentence cannot safely define the explicit question scope.
+        if re.search(r"[.!?](?=\s|$)|\n", corrected[start:end]):
+            return expected
+        preceding = corrected[corrected_words[first - 1].end():start] if first else corrected[:start]
+        if first and not re.search(r"[.!?\n]", preceding):
+            return expected
+        following = (
+            corrected[end:corrected_words[last + 1].start()]
+            if last + 1 < len(corrected_words) else corrected[end:]
+        )
+        if last + 1 < len(corrected_words) and not re.search(r"[.!?\n]", following):
+            return expected
+        if "¿" in preceding and "?" not in following:
+            return expected
+        if start and corrected[start - 1] in "¿¡":
+            start -= 1
+        while end < len(corrected) and corrected[end] in ".!?":
+            end += 1
+        body = corrected[corrected_words[first].start():corrected_words[last].end()]
+        replacements.append((start, end, "¿" + body[0].upper() + body[1:] + "?"))
+    for start, end, replacement in reversed(replacements):
+        corrected = corrected[:start] + replacement + corrected[end:]
+    return corrected
+
+
+def _protect_statement_question_rewrite(source_text: str, corrected: str) -> str:
+    """Keep explicit Spanish indirect questions and ability explanations declarative."""
+    if "?" not in corrected:
         return corrected
-    body = first.group(1).strip()
-    if not body:
+    expected = _repair_technical_literal_format(source_text, source_text)
+    protected = []
+    for sentence in re.finditer(
+        r"(?:^\s*|(?<=[.!?])\s+|\n[ \t]*)(?P<body>\S[^\n]*?)"
+        r"(?P<end>[.!?](?=\s|$)|(?=\n|$))", expected
+    ):
+        if "¿" in sentence["body"] or sentence["end"] == "?":
+            continue
+        if re.match(
+            r"(?:no (?:se|sabes|sabemos|sabia)|me pregunto|queria saber|"
+            r"dime (?:como|que|cuando|donde|cual|quien|cuanto|si|por que)|"
+            r"con este permiso|gracias a|se que|me dijo que|ahora ya)\b",
+            _normalized_plain_text(sentence["body"]),
+        ):
+            protected.append(sentence)
+    if not protected:
         return corrected
-    question = f"¿{body[0].upper()}{body[1:]}?"
-    return question + corrected[first.end():]
+    expected_words = list(re.finditer(r"\w+", expected))
+    corrected_words = list(re.finditer(r"\w+", corrected))
+    if (
+        [_normalized_plain_text(word[0]) for word in expected_words]
+        != [_normalized_plain_text(word[0]) for word in corrected_words]
+    ):
+        return expected
+    replacements = []
+    for sentence in protected:
+        indices = [
+            index for index, word in enumerate(expected_words)
+            if sentence.start("body") <= word.start() < sentence.end("body")
+        ]
+        if not indices:
+            continue
+        first, last = indices[0], indices[-1]
+        start, end = corrected_words[first].start(), corrected_words[last].end()
+        if start and corrected[start - 1] == "¿":
+            start -= 1
+        while end < len(corrected) and corrected[end] in ".!?":
+            end += 1
+        segment = corrected[start:end]
+        if "?" in segment:
+            replacements.append((start, end, segment.replace("¿", "").replace("?", ".")))
+    for start, end, replacement in reversed(replacements):
+        corrected = corrected[:start] + replacement + corrected[end:]
+    return corrected
 
 def _isolated_expression_command_value(text: str) -> str | None:
     """Return expression text only when the whole text is an isolated command."""
@@ -2169,6 +2313,8 @@ def _postprocess_transcript(
     if alphanumeric_text != prepared_text:
         prepared_text = _repair_spoken_technical_literals(alphanumeric_text, alphanumeric_text)
     prepared_text = _prepare_formatted_list_transcript(_prepare_spoken_code_digits(prepared_text))
+    question_source = prepared_text
+    prepared_text = _prepare_question_directives(prepared_text)
     system_prompt = instruction.strip() if instruction and instruction.strip() else DEFAULT_POSTPROCESS_PROMPT
     user_prompt = prepared_text if direct_prompt else f"Raw transcript:\n{prepared_text}\n\nCorrected transcript:"
     max_tokens = max(64, min(4096, len(raw_text) // 2 + 128))
@@ -2222,7 +2368,8 @@ def _postprocess_transcript(
     corrected = _protect_spelled_words(raw_text, _prepare_spelled_words(raw_text), corrected)
     corrected = _protect_spoken_class_identifiers(raw_text, prepared_text, corrected)
     corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
-    corrected = _enforce_leading_question_directive(raw_text, corrected)
+    corrected = _protect_statement_question_rewrite(prepared_text, corrected)
+    corrected = _enforce_question_directives(question_source, corrected)
     _log_llm_postprocess_timing(result, raw_text, corrected)
     if not corrected:
         return raw_text
