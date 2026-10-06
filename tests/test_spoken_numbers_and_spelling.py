@@ -26,7 +26,7 @@ class SpokenNumbersAndSpellingTest(unittest.TestCase):
     def test_v20_spoken_hundreds_and_english_numbers(self):
         self.assertEqual(
             self.postprocess("doscientos euros", "200 euros"),
-            "200 euros",
+            "200 €",
         )
         self.assertEqual(
             self.postprocess("four point fifty eight point zero", "4.58.0"),

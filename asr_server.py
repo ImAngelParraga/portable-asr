@@ -301,6 +301,8 @@ Core rules:
    - ten percent -> 10%
    - five dollars -> $5
    - doscientos euros -> 200 €
+   - cinco dólares -> $5; preserve the amount and currency exactly
+   - Convert currency words only beside amounts; keep ordinary mentions such as "el euro sube" literal.
    - cuatro punto cincuenta y ocho punto cero -> 4.58.0 (keep every component, including zero)
 6. Keep every part in its original language. Do not translate.
 7. Preserve meaning and original word order as much as possible. Do not paraphrase or rewrite style.
@@ -1290,8 +1292,8 @@ def _enforce_question_directives(source_text: str, corrected: str) -> str:
         source_text, _prepare_question_directives(source_text)
     )
     corrected = _remove_question_directives(corrected)
-    expected_words = list(re.finditer(r"\w+", expected))
-    corrected_words = list(re.finditer(r"\w+", corrected))
+    expected_words = list(re.finditer(r"\w+|[€$%]", expected))
+    corrected_words = list(re.finditer(r"\w+|[€$%]", corrected))
     if (
         [_normalized_plain_text(word[0]) for word in expected_words]
         != [_normalized_plain_text(word[0]) for word in corrected_words]
@@ -1354,8 +1356,8 @@ def _protect_statement_question_rewrite(source_text: str, corrected: str) -> str
             protected.append(sentence)
     if not protected:
         return corrected
-    expected_words = list(re.finditer(r"\w+", expected))
-    corrected_words = list(re.finditer(r"\w+", corrected))
+    expected_words = list(re.finditer(r"\w+|[€$%]", expected))
+    corrected_words = list(re.finditer(r"\w+|[€$%]", corrected))
     if (
         [_normalized_plain_text(word[0]) for word in expected_words]
         != [_normalized_plain_text(word[0]) for word in corrected_words]
@@ -2053,7 +2055,53 @@ def _spoken_number_at(tokens: list[str], index: int) -> tuple[str, int] | None:
         return str(_ENGLISH_UNITS[word]), 1
     return None
 
+_QUANTITY_NUMBER_WORDS = (
+    set(_SPANISH_UNITS) | set(_SPANISH_TENS) | set(_SPANISH_HUNDREDS)
+    | set(_ENGLISH_UNITS) | set(_ENGLISH_TENS)
+    | {"un", "una", "hundred", "mil", "millon", "millones", "thousand", "million"}
+)
+_QUANTITY_WORD_PATTERN = "|".join(
+    re.escape(word).replace("i", "[ií]").replace("o", "[oó]")
+    for word in sorted(_QUANTITY_NUMBER_WORDS, key=len, reverse=True)
+)
+_QUANTITY_AMOUNT_PATTERN = (
+    r"\d+(?:[.,]\d+)*|"
+    rf"(?:{_QUANTITY_WORD_PATTERN})\b"
+    rf"(?:[\s-]+(?:{_QUANTITY_WORD_PATTERN}|y|and)\b)*"
+)
+_QUANTITY_SUFFIX_RE = re.compile(
+    rf"(?<![\w.,])(?P<amount>{_QUANTITY_AMOUNT_PATTERN})\s*"
+    r"(?P<unit>euros?\b|d[oó]lar(?:es)?\b|dollars?\b|por\s+ciento\b|percent\b|[€$%])",
+    re.IGNORECASE,
+)
+_QUANTITY_PREFIX_RE = re.compile(r"(?P<unit>[€$])\s*(?P<amount>\d+(?:[.,]\d+)*)")
+
+def _format_quantity_symbols(text: str) -> str:
+    """Format explicit amounts only, preserving currency and numeric precision."""
+    def replace(match: re.Match) -> str:
+        amount = match.group("amount")
+        if not amount[0].isdigit():
+            tokens = re.findall(r"[a-z]+", _normalized_plain_text(amount))
+            tokens = ["uno" if token in {"un", "una"} else token for token in tokens]
+            number = _spoken_number_at(tokens, 0)
+            if number is None or number[1] != len(tokens):
+                return match.group(0)
+            amount = number[0]
+        unit = _normalized_plain_text(match.group("unit"))
+        if unit.startswith("euro") or unit == "€":
+            return f"{amount} €"
+        if unit.startswith(("dolar", "dollar")) or unit == "$":
+            return f"${amount}"
+        return f"{amount}%"
+
+    return _QUANTITY_SUFFIX_RE.sub(replace, _QUANTITY_PREFIX_RE.sub(replace, text))
+
 def _meaningful_order_tokens(text: str) -> list[str]:
+    # Symbols carry meaning: a changed or missing currency must fail comparison.
+    text = _format_quantity_symbols(text)
+    text = re.sub(r"\$(\d+(?:[.,]\d+)*)", r"\1 $", text)
+    for symbol, token in (("€", "quantityeuro"), ("$", "quantitydollar"), ("%", "quantitypercent")):
+        text = text.replace(symbol, f" {token} ")
     text = _normalized_plain_text(text)
     text = re.sub(
         r"\b(full stop|question mark|signo de interrogacion|(?:guion|barra) baj[ao]|"
@@ -2308,7 +2356,9 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
-    prepared_text = _repair_spoken_class_identifiers(raw_text, _prepare_spelled_words(raw_text))
+    prepared_text = _format_quantity_symbols(
+        _repair_spoken_class_identifiers(raw_text, _prepare_spelled_words(raw_text))
+    )
     alphanumeric_text = _prepare_spoken_alphanumeric_literals(prepared_text)
     if alphanumeric_text != prepared_text:
         prepared_text = _repair_spoken_technical_literals(alphanumeric_text, alphanumeric_text)
@@ -2361,6 +2411,7 @@ def _postprocess_transcript(
     corrected = _repair_technical_literal_format(raw_text, corrected)
     corrected = re.sub(r'([?.!,;:])\1{3,}', r'\1', corrected)
     corrected = re.sub(r'\s+([?.!,;:])', r'\1', corrected)
+    corrected = _format_quantity_symbols(corrected)
     corrected = _protect_formatted_list_rewrite(raw_text, prepared_text, corrected)
     corrected = _protect_spanish_diminutive_rewrite(raw_text, corrected)
     corrected = _protect_spanish_pronoun_rewrite(raw_text, corrected)

@@ -58,6 +58,7 @@ V28: Explicit project/proyecto context reconstructs spoken technical separators 
 V29: Explicit class/clase followed by two to four name words ending in a conventional class-role suffix and a clear boundary joins PascalCase before LLM and safety comparison; exact source words and repetitions are protected after cleanup, inline-code wrappers are removed only around recognized names, existing identifiers and explicit separators remain intact, and ambiguous names or prose remain literal.
 V30: Sentence-leading Spanish `pregunta` controls at transcript start, after sentence punctuation, or after line breaks deterministically mark only their following sentence as `¿...?`, including repeated commands and a period after the marker; ordinary in-sentence uses remain literal, model punctuation cannot expand the question boundary, and question words remain unchanged.
 V31: Default cleanup instructions distinguish direct Spanish questions and conversational requests from indirect questions and ambiguous statements, ignore unreliable ASR periods as evidence of intent, preserve words, and include positive and negative examples; explicit indirect-question and ability-explanation prefixes reject invented interrogative punctuation or word loss unless source punctuation or a control establishes a question; offline tests verify behavior without a live model.
+V32: Enabled successful cleanup deterministically formats explicit Spanish/English euro, dollar, and percent amounts as symbols, including unchanged LLM output; safety comparison preserves currency/unit identity, amount precision, and surrounding words while accepting equivalent currency prefix/suffix forms. Ordinary currency mentions and unsupported spoken amounts remain literal; question and list formatting retain the complete quantity. Disabled/unavailable cleanup keeps its existing raw-text failure contract.
 
 §T
 id|status|task|detail|cites
@@ -78,6 +79,7 @@ T14|x|Retain recent diagnostic audio|Add optional bounded local audio history, r
 
 T15|x|Repair class and project literals|Recognize bilingual project cues; prepare and protect bounded PascalCase class-role names; test full cleanup, source cue case, and ambiguous prose.|I.postprocess,C3,C7,V28,V29
 T16|x|Improve Spanish question formatting|Strengthen contextual question instructions; prepare and enforce sentence-scoped question controls; verify direct/indirect questions, repeated commands, fallback, and live text samples.|I.postprocess,C3,C7,V23,V30,V31
+T17|x|Format quantity symbols consistently|Prepare explicit euro/dollar/percent amounts before cleanup, compare symbol identity during safety checks, normalize unchanged model output, and include units in question boundaries; verify bilingual amounts, precision, lists, ordinary mentions, and failure contracts.|I.postprocess,I.transcribe,C3,C7,V32
 
 §B
 id|date|cause|fix
@@ -96,3 +98,4 @@ B12|2026-10-02|Technical cue list omitted project/proyecto and restored explicit
 B13|2026-10-02|Live cleanup wrapped identifiers in inline code; class protection rejected equivalent formatting and restored prepared text with spoken separators|V28,V29
 B14|2026-10-05|Question instructions lacked contextual direct/indirect examples; deterministic pregunta enforcement checked only transcript start and trusted model sentence boundaries|V30,V31
 B15|2026-10-05|Question enforcement treated decimal points as sentence ends; live LLM ignored negative prompt examples and turned ability explanations or dime requests into direct questions|V30,V31
+B16|2026-10-06|Safety comparison discarded currency symbols and counted currency words as lost content, restoring spoken amounts; deterministic question boundaries excluded trailing quantity symbols|V32
