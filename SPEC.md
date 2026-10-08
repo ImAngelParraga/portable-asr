@@ -60,6 +60,8 @@ V30: Sentence-leading Spanish `pregunta` controls at transcript start, after sen
 V31: Default cleanup instructions distinguish direct Spanish questions and conversational requests from indirect questions and ambiguous statements, ignore unreliable ASR periods as evidence of intent, preserve words, and include positive and negative examples; explicit indirect-question and ability-explanation prefixes reject invented interrogative punctuation or word loss unless source punctuation or a control establishes a question; offline tests verify behavior without a live model.
 V32: Enabled successful cleanup deterministically formats explicit Spanish/English euro, dollar, and percent amounts as symbols, including unchanged LLM output; safety comparison preserves currency/unit identity, amount precision, and surrounding words while accepting equivalent currency prefix/suffix forms. Ordinary currency mentions and unsupported spoken amounts remain literal; question and list formatting retain the complete quantity. Disabled/unavailable cleanup keeps its existing raw-text failure contract.
 
+V33: Embedded English `hyphen`/`underscore` between name words deterministically formats lowercase identifiers without a nearby technical cue; ordinary punctuation mentions and ambiguous multiword class names remain literal. Prepare recognized separators before LLM cleanup so safety fallbacks retain the identifier; disabled/unavailable cleanup preserves its raw-text contract.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -99,3 +101,4 @@ B13|2026-10-02|Live cleanup wrapped identifiers in inline code; class protection
 B14|2026-10-05|Question instructions lacked contextual direct/indirect examples; deterministic pregunta enforcement checked only transcript start and trusted model sentence boundaries|V30,V31
 B15|2026-10-05|Question enforcement treated decimal points as sentence ends; live LLM ignored negative prompt examples and turned ability explanations or dime requests into direct questions|V30,V31
 B16|2026-10-06|Safety comparison discarded currency symbols and counted currency words as lost content, restoring spoken amounts; deterministic question boundaries excluded trailing quantity symbols|V32
+B17|2026-10-08|Separator confidence required a technical cue for embedded word-only identifiers, restoring spoken commands and allowing name capitalization; unprepared safety fallbacks could restore commands|V33
