@@ -1585,6 +1585,22 @@ def _spoken_literal_is_high_confidence(
     words: list[str],
     spoken_symbols: list[str],
 ) -> bool:
+    # Explicit English identifier commands need no nearby technical cue.
+    # Function words indicate ordinary mentions such as "the hyphen is wrong".
+    mention_words = {
+        "a", "an", "the", "this", "that", "these", "those", "my", "your",
+        "our", "their", "its", "his", "her", "is", "are", "was", "were",
+        "and", "or", "of", "for", "to", "in", "on", "with", "as",
+    }
+    if (
+        all(symbol.lower() in {"hyphen", "underscore"} for symbol in spoken_symbols)
+        and not any(word.lower() in mention_words for word in words)
+        and not re.search(
+            rf"\b(?:class|clase)\s+(?:{_TECH_TOKEN_PATTERN}\s+)+$",
+            raw_text[:match.start()], re.IGNORECASE,
+        )
+    ):
+        return True
     if len(spoken_symbols) > 1 or any(any(char.isdigit() for char in word) for word in words):
         return True
     if re.fullmatch(
@@ -2362,6 +2378,7 @@ def _postprocess_transcript(
     alphanumeric_text = _prepare_spoken_alphanumeric_literals(prepared_text)
     if alphanumeric_text != prepared_text:
         prepared_text = _repair_spoken_technical_literals(alphanumeric_text, alphanumeric_text)
+    prepared_text = _repair_spoken_technical_literals(prepared_text, prepared_text)
     prepared_text = _prepare_formatted_list_transcript(_prepare_spoken_code_digits(prepared_text))
     question_source = prepared_text
     prepared_text = _prepare_question_directives(prepared_text)

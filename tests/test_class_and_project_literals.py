@@ -14,6 +14,35 @@ class ClassAndProjectLiteralsTest(unittest.TestCase):
         ):
             return asr_server._postprocess_transcript(raw)
 
+    def test_v33_embedded_explicit_separators_without_technical_cue(self):
+        for spoken, symbol in (("hyphen", "-"), ("underscore", "_")):
+            raw = f"Please check demo {spoken} tools before continuing."
+            expected = f"Please check demo{symbol}tools before continuing."
+            for output in (raw, raw.replace("demo", "Demo"), raw.replace(f"demo {spoken} tools", "Demo Tools"), expected):
+                with self.subTest(raw=raw, output=output):
+                    self.assertEqual(self.clean(raw, output), expected)
+
+    def test_v33_prepares_identifiers_before_cleanup_and_safety_fallback(self):
+        raw = "Please check demo hyphen tools before continuing."
+        expected = "Please check demo-tools before continuing."
+        with (
+            patch.object(asr_server, "ASR_POSTPROCESS_ENABLED", True),
+            patch.object(asr_server, "_llm_chat", return_value={
+                "choices": [{"message": {"content": "Unrelated replacement."}}],
+            }) as chat,
+        ):
+            self.assertEqual(asr_server._postprocess_transcript(raw), expected)
+            self.assertIn(expected, chat.call_args.args[0][1]["content"])
+
+    def test_v33_ordinary_punctuation_mentions_remain_literal(self):
+        for raw in (
+            "The hyphen is wrong.", "A hyphen separates words.",
+            "This underscore is missing.", "The project manager discussed the hyphen yesterday.",
+            "We made a dash for the door.", "Please use the slash separator.",
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(self.clean(raw, raw), raw)
+
     def test_v28_project_separators_and_cue_case(self):
         cases = (
             ("changes in project demo hyphen tools", "Changes in Project Demo hyphen tools.", "Changes in project demo-tools."),
