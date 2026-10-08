@@ -57,6 +57,12 @@ curl -sS \
 
 Keep prompts short and in the same language as the audio. Long or unrelated prompts can bias Whisper toward hallucinated words.
 
+## Speech Restarts
+
+With post-processing enabled, bounded preposition restarts keep the final choice: `Quiero ir a, al rocódromo de allí` becomes `Quiero ir al rocódromo de allí`, and `You can see that on, in this file` becomes `You can see that in this file`. Commas, ellipses, and pause dashes are accepted between adjacent prepositions. Supported repairs are `a` → `al`, `de` → `del`, `on` ↔ `in`, and repeated prepositions followed by phrase content. Repairs run before model cleanup and safety comparison, and also handle unchanged model output.
+
+Meaningful corrections such as `tomorrow, no, Friday`, emphasis, alternatives, quoted speech, code, and explicit spelling/list controls remain outside this rule. Unmarked or ambiguous restarts stay literal. The cleanup model receives text, so it cannot recover pauses that ASR omitted. Disabled or unavailable optional cleanup returns the original raw transcript.
+
 ## Questions In Dictation
 
 Default post-processing uses sentence context to restore Spanish direct questions and conversational requests, even when the ASR output ends with a period. For example, `puedes enviarme el archivo` normally becomes `¿Puedes enviarme el archivo?`. Indirect questions such as `no sé cómo funciona esto` remain statements. Cleanup changes punctuation and accents without inserting question words.

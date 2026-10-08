@@ -62,6 +62,8 @@ V32: Enabled successful cleanup deterministically formats explicit Spanish/Engli
 
 V33: Embedded English `hyphen`/`underscore` between name words deterministically formats lowercase identifiers without a nearby technical cue; ordinary punctuation mentions and ambiguous multiword class names remain literal. Prepare recognized separators before LLM cleanup so safety fallbacks retain the identifier; disabled/unavailable cleanup preserves its raw-text contract.
 
+V34: Successful enabled cleanup prepares bounded adjacent preposition restarts marked by comma, ellipsis, or pause dash before model and safety comparison: a/al, de/del, on/in, in/on, and repeated prepositions retain the final choice and following content, including unchanged model output and numeric phrases. Alternatives, enumerations, quotations, code, spelling/list controls, meaningful corrections, and unmarked or ambiguous starts remain literal; disabled/unavailable cleanup retains raw-text failure contracts.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -83,6 +85,8 @@ T15|x|Repair class and project literals|Recognize bilingual project cues; prepar
 T16|x|Improve Spanish question formatting|Strengthen contextual question instructions; prepare and enforce sentence-scoped question controls; verify direct/indirect questions, repeated commands, fallback, and live text samples.|I.postprocess,C3,C7,V23,V30,V31
 T17|x|Format quantity symbols consistently|Prepare explicit euro/dollar/percent amounts before cleanup, compare symbol identity during safety checks, normalize unchanged model output, and include units in question boundaries; verify bilingual amounts, precision, lists, ordinary mentions, and failure contracts.|I.postprocess,I.transcribe,C3,C7,V32
 
+T18|x|Clean local speech restarts|Prepare and validate bilingual preposition restarts; preserve meaningful corrections, alternatives, literal contexts, and raw failure behavior; verify model corrections and unchanged output offline.|I.postprocess,I.transcribe,C3,C7,V34
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -102,3 +106,4 @@ B14|2026-10-05|Question instructions lacked contextual direct/indirect examples;
 B15|2026-10-05|Question enforcement treated decimal points as sentence ends; live LLM ignored negative prompt examples and turned ability explanations or dime requests into direct questions|V30,V31
 B16|2026-10-06|Safety comparison discarded currency symbols and counted currency words as lost content, restoring spoken amounts; deterministic question boundaries excluded trailing quantity symbols|V32
 B17|2026-10-08|Separator confidence required a technical cue for embedded word-only identifiers, restoring spoken commands and allowing name capitalization; unprepared safety fallbacks could restore commands|V33
+B18|2026-10-08|Cleanup prompt preserved abandoned prepositions; word-retention guard rejected deletion in short or numeric phrases, and unchanged model output had no restart repair|V34

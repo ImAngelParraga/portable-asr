@@ -295,7 +295,12 @@ Core rules:
 3. Do not add missing words to make the text more grammatical unless the word is a short, obvious local omission such as a Spanish auxiliary, or the word was clearly spoken as a control marker or punctuation command.
 4. Remove filler sounds only when they are clearly non-meaningful speech noises:
    - um, uh, eh, mmm
-   Do not remove repeated words, hesitations, self-corrections, or partial thoughts if they carry meaning.
+   Remove only clearly abandoned local preposition starts when the speaker immediately restarts the same phrase, retaining the final preposition and all following content:
+   - Quiero ir a, al rocódromo de allí -> Quiero ir al rocódromo de allí
+   - You can see that on, in this file -> You can see that in this file
+   - Voy a, a casa -> Voy a casa
+   A comma, ellipsis, or pause dash between adjacent prepositions may mark a restart. Preserve prepared restart repairs.
+   Do not remove meaningful repetitions, emphasis, negation, alternatives, enumerations, quotations, technical literals, or substantive corrections such as "tomorrow, no, Friday". If the restart is ambiguous, preserve it.
 5. Convert clear spoken numbers to digits:
    - twenty-five -> 25
    - ten percent -> 10%
@@ -2359,6 +2364,43 @@ async def _acquire_concurrency_slot(kind: str):
         detail=f"Server busy, timed out waiting to start {kind}",
     )
 
+def _prepare_preposition_restarts(text: str) -> str:
+    """Remove bounded speech restarts without deleting substantive corrections."""
+    # Explicit spelling/lists and metalinguistic discussion can enumerate these words.
+    if re.search(
+        r"\b(?:prepositions?|preposiciones?|spell|deletreo|lista|list|"
+        r"identifier|identificador|literal|code|código)\b", text, re.IGNORECASE,
+    ):
+        return text
+    prepositions = {"a", "al", "de", "del", "en", "con", "por", "para",
+                    "in", "on", "at", "to", "for", "with", "from", "of"}
+    alternatives = "|".join(sorted(prepositions, key=lambda word: (-len(word), word)))
+    pattern = re.compile(
+        rf"\b(?P<first>{alternatives})[ \t]*(?:,|\.{{2,}}|…|[—–-])[ \t]*"
+        rf"(?P<last>{alternatives})\b(?P<space>[ \t]+)(?P<next>\w+)",
+        re.IGNORECASE,
+    )
+    allowed_pairs = {("a", "al"), ("de", "del"), ("in", "on"), ("on", "in")}
+
+    def repair(match: re.Match) -> str:
+        first, last = match.group("first", "last")
+        following = match.group("next").lower()
+        if (first.lower() != last.lower()
+                and (first.lower(), last.lower()) not in allowed_pairs):
+            return match.group(0)
+        if following in prepositions | {"and", "or", "y", "o", "ni", "nor"}:
+            return match.group(0)
+        replacement = last
+        if first[:1].isupper():
+            replacement = replacement[:1].upper() + replacement[1:]
+        return replacement + match.group("space") + match.group("next")
+
+    # Keep quoted speech and code verbatim. Apostrophes inside words are not quotes.
+    parts = re.split(r"(`[^`]*`|\"[^\"]*\"|(?<!\w)'[^'\n]*'(?!\w)|“[^”]*”|«[^»]*»)", text)
+    for index in range(0, len(parts), 2):
+        parts[index] = pattern.sub(repair, parts[index])
+    return "".join(parts)
+
 def _postprocess_transcript(
     raw_text: str,
     instruction: str | None = None,
@@ -2372,8 +2414,9 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
+    cleanup_source = _prepare_preposition_restarts(raw_text)
     prepared_text = _format_quantity_symbols(
-        _repair_spoken_class_identifiers(raw_text, _prepare_spelled_words(raw_text))
+        _repair_spoken_class_identifiers(cleanup_source, _prepare_spelled_words(cleanup_source))
     )
     alphanumeric_text = _prepare_spoken_alphanumeric_literals(prepared_text)
     if alphanumeric_text != prepared_text:
@@ -2415,26 +2458,28 @@ def _postprocess_transcript(
         corrected = corrected.split("Exiting...", 1)[0]
     corrected = _remove_quoted_and_empty_wrapper_lines(corrected)
 
+    if cleanup_source != raw_text:
+        corrected = _prepare_preposition_restarts(corrected)
     corrected = _apply_isolated_expression_command(_remove_question_directives(_strip_reasoning_blocks(corrected)))
     corrected = _apply_isolated_expression_sentences(corrected)
     corrected = _apply_explicit_paragraph_breaks(corrected)
-    corrected = _protect_non_isolated_expression_rewrite(raw_text, corrected)
+    corrected = _protect_non_isolated_expression_rewrite(cleanup_source, corrected)
     corrected = re.sub(
         r'^\s*(cleaned\s+text|text\s+cleaned|transcript\s+cleaned|cleaned\s+transcript|texto\s+limpio|texto\s+corregido|transcripción\s+limpia|transcripcion\s+limpia)\s*[:：\-–—]\s*',
         '',
         corrected,
         flags=re.IGNORECASE,
     )
-    corrected = _repair_technical_literal_format(raw_text, corrected)
+    corrected = _repair_technical_literal_format(cleanup_source, corrected)
     corrected = re.sub(r'([?.!,;:])\1{3,}', r'\1', corrected)
     corrected = re.sub(r'\s+([?.!,;:])', r'\1', corrected)
     corrected = _format_quantity_symbols(corrected)
-    corrected = _protect_formatted_list_rewrite(raw_text, prepared_text, corrected)
-    corrected = _protect_spanish_diminutive_rewrite(raw_text, corrected)
-    corrected = _protect_spanish_pronoun_rewrite(raw_text, corrected)
-    corrected = _protect_spanish_discourse_marker_rewrite(raw_text, corrected)
-    corrected = _protect_spelled_words(raw_text, _prepare_spelled_words(raw_text), corrected)
-    corrected = _protect_spoken_class_identifiers(raw_text, prepared_text, corrected)
+    corrected = _protect_formatted_list_rewrite(cleanup_source, prepared_text, corrected)
+    corrected = _protect_spanish_diminutive_rewrite(cleanup_source, corrected)
+    corrected = _protect_spanish_pronoun_rewrite(cleanup_source, corrected)
+    corrected = _protect_spanish_discourse_marker_rewrite(cleanup_source, corrected)
+    corrected = _protect_spelled_words(cleanup_source, _prepare_spelled_words(cleanup_source), corrected)
+    corrected = _protect_spoken_class_identifiers(cleanup_source, prepared_text, corrected)
     corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
     corrected = _protect_statement_question_rewrite(prepared_text, corrected)
     corrected = _enforce_question_directives(question_source, corrected)
