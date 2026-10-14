@@ -121,6 +121,84 @@ class QuestionControlsTest(unittest.TestCase):
                 result, _ = self.cleanup(raw, output)
                 self.assertEqual(result, "¿Con este permiso puedes editar el archivo?")
 
+    def test_v35_explanatory_que_rejects_questions_and_accent_changes(self):
+        cases = (
+            ("Disculpa, que no te había leído.", "Disculpa, ¿qué no te había leído?"),
+            ("Perdona que no te haya contestado.", "Perdona, ¿qué no te haya contestado?"),
+            ("Que mañana no puedo.", "¿Qué mañana no puedo?"),
+            ("Que no te había leído.", "¿Qué no te había leído?"),
+            ("Disculpa, que no te había leído.", "Disculpa, qué no te había leído."),
+            ("Disculpa, que no te había leído. Puedes revisarlo.",
+             "Disculpa, ¿qué no te había leído? ¿Puedes revisarlo?"),
+        )
+        for raw, output in cases:
+            with self.subTest(raw=raw):
+                result, _ = self.cleanup(raw, output)
+                self.assertNotIn("¿qué", result.lower())
+                self.assertNotIn("¿que", result.lower())
+                self.assertIn("que", result.lower())
+                if "Puedes revisarlo" in raw:
+                    self.assertTrue(result.endswith("¿Puedes revisarlo?"))
+
+    def test_v35_explanation_preserves_embedded_interrogative_accent(self):
+        result, _ = self.cleanup(
+            "Disculpa, que no sé qué has leído.",
+            "Disculpa, ¿que no sé qué has leído?",
+        )
+        self.assertEqual(result, "Disculpa, que no sé qué has leído.")
+
+    def test_v35_echo_questions_keep_unaccented_que(self):
+        for raw in ("¿Que mañana no puedes?", "Pregunta que mañana no puedes."):
+            with self.subTest(raw=raw):
+                result, _ = self.cleanup(raw, "¿Qué mañana no puedes?")
+                self.assertEqual(result, "¿Que mañana no puedes?")
+
+    def test_v35_real_questions_survive_explanatory_protection(self):
+        cases = (
+            ("Disculpa, qué habías leído.", "Disculpa, ¿qué habías leído?"),
+            ("¿Que mañana no puedes?", "¿Que mañana no puedes?"),
+            ("Pregunta que mañana no puedes.", "¿Que mañana no puedes?"),
+            ("Pregunta disculpa que no te había leído.", "¿Disculpa que no te había leído?"),
+            ("Qué quieres que haga.", "¿Qué quieres que haga?"),
+        )
+        for raw, output in cases:
+            with self.subTest(raw=raw):
+                result, _ = self.cleanup(raw, output)
+                self.assertEqual(result, output)
+
+    def test_v36_haber_conjugations_survive_cleanup(self):
+        cases = (
+            ("Disculpa, que no te había leído.", "Disculpa, ¿qué no te habías leído?"),
+            ("Voy a abrirte la puerta. Disculpa que no te había leído.",
+             "Voy a abrirte la puerta. Disculpa que no te hubieras leído."),
+            ("No te había leído. Puedes revisarlo.", "No te habías leído. ¿Puedes revisarlo?"),
+            ("Espero que haya llegado.", "Espero que ha llegado."),
+            ("Ya hemos terminado.", "Ya han terminado."),
+            ("¿Habías leído esto?", "¿Había leído esto?"),
+            ("Habíamos terminado y habías avisado.", "Habían terminado y había avisado."),
+        )
+        for raw, output in cases:
+            with self.subTest(raw=raw):
+                result, _ = self.cleanup(raw, output)
+                expected = raw.replace("Puedes revisarlo.", "¿Puedes revisarlo?")
+                self.assertEqual(result, expected)
+
+    def test_v36_haber_protection_accepts_formatting_and_missing_auxiliary(self):
+        cases = (
+            ("cuando habias llegado", "¿Cuándo habías llegado?"),
+            ("me dicho que viene", "Me ha dicho que viene."),
+            ("Había 25 personas.", "Había 25 personas."),
+        )
+        for raw, output in cases:
+            with self.subTest(raw=raw):
+                result, _ = self.cleanup(raw, output)
+                self.assertEqual(result, output)
+
+    def test_v36_unaligned_haber_changes_fall_back_without_guessing(self):
+        raw = "Disculpa que no te había leído antes de abrir la puerta."
+        result, _ = self.cleanup(raw, "Perdona que no te hubieras leído antes de abrir la puerta.")
+        self.assertEqual(result, raw)
+
 
 if __name__ == "__main__":
     unittest.main()

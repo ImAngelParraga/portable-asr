@@ -375,6 +375,8 @@ Question control rules:
     - Standalone requests addressed to the listener such as "puedes enviarme..." or "podrías revisar..." normally take question marks. Preserve statements about ability when context clearly asserts it, such as "con este permiso puedes editar el archivo".
     - Apply that request heuristic only to a sentence starting with puedes/podrías, not an embedded clause. Declarative explanations introduced by "con este permiso", "gracias a", "sé que", "me dijo que", or "porque" remain statements. Do not split off "puedes..." as a new question inside such an explanation.
     - Indirect questions inside statements remain statements: "no sé cómo...", "me pregunto si...", "quería saber si...", "dime cómo...". An interrogative word alone is not enough.
+    - Explanatory or continuation "que" is not interrogative: "disculpa, que no te había leído", "perdona que no te haya contestado", and "que mañana no puedo" remain statements. Preserve "que" without an accent and preserve the original verb conjugation. Do not split an explanation into a new question.
+    - Distinguish "Disculpa, que no te había leído." from "Disculpa, ¿qué habías leído?". Explicit echo questions such as "¿Que mañana no puedes?" remain questions with unaccented "que".
     - Do not guess unheard intonation. Ambiguous declarative wording such as "mañana vienes" stays declarative unless context or an explicit question marker establishes a question.
     - Change punctuation and accents only; never insert question words, reorder words, or turn an indirect question into a direct one.
     - A leading "pregunta" controls only its following sentence, including after a line break or a period after the marker. Preserve prepared ¿...? boundaries and leave following statements outside the question.
@@ -1341,8 +1343,8 @@ def _enforce_question_directives(source_text: str, corrected: str) -> str:
 
 
 def _protect_statement_question_rewrite(source_text: str, corrected: str) -> str:
-    """Keep explicit Spanish indirect questions and ability explanations declarative."""
-    if "?" not in corrected:
+    """Keep bounded Spanish explanations and indirect questions declarative."""
+    if "?" not in corrected and not re.search(r"\bqué\b", corrected, re.IGNORECASE):
         return corrected
     expected = _repair_technical_literal_format(source_text, source_text)
     protected = []
@@ -1350,15 +1352,21 @@ def _protect_statement_question_rewrite(source_text: str, corrected: str) -> str
         r"(?:^\s*|(?<=[.!?])\s+|\n[ \t]*)(?P<body>\S[^\n]*?)"
         r"(?P<end>[.!?](?=\s|$)|(?=\n|$))", expected
     ):
-        if "¿" in sentence["body"] or sentence["end"] == "?":
+        explicit_question = "¿" in sentence["body"] or sentence["end"] == "?"
+        explanatory_que = re.match(
+            r"¿?(?:(?:disculpa|disculpe|perdona|perdone|perdón)[, ]+)?"
+            r"(?P<que>que)\s+(?:no|ya|mañana|hoy|ayer|ahora|todavía|aún)\b",
+            sentence["body"], re.IGNORECASE,
+        )
+        if explicit_question and not explanatory_que:
             continue
-        if re.match(
+        if explanatory_que or re.match(
             r"(?:no (?:se|sabes|sabemos|sabia)|me pregunto|queria saber|"
             r"dime (?:como|que|cuando|donde|cual|quien|cuanto|si|por que)|"
             r"con este permiso|gracias a|se que|me dijo que|ahora ya)\b",
             _normalized_plain_text(sentence["body"]),
         ):
-            protected.append(sentence)
+            protected.append((sentence, explanatory_que, explicit_question))
     if not protected:
         return corrected
     expected_words = list(re.finditer(r"\w+|[€$%]", expected))
@@ -1369,7 +1377,7 @@ def _protect_statement_question_rewrite(source_text: str, corrected: str) -> str
     ):
         return expected
     replacements = []
-    for sentence in protected:
+    for sentence, explanatory_que, explicit_question in protected:
         indices = [
             index for index, word in enumerate(expected_words)
             if sentence.start("body") <= word.start() < sentence.end("body")
@@ -1383,10 +1391,55 @@ def _protect_statement_question_rewrite(source_text: str, corrected: str) -> str
         while end < len(corrected) and corrected[end] in ".!?":
             end += 1
         segment = corrected[start:end]
-        if "?" in segment:
-            replacements.append((start, end, segment.replace("¿", "").replace("?", ".")))
+        if explanatory_que:
+            que_start = sentence.start("body") + explanatory_que.start("que")
+            que_index = next(index for index in indices if expected_words[index].start() == que_start)
+            output_que = corrected_words[que_index]
+            offset = output_que.start() - start
+            segment = segment[:offset] + expected_words[que_index][0] + segment[offset + len(output_que[0]):]
+        if "?" in segment and not explicit_question:
+            segment = segment.replace("¿", "").replace("?", ".")
+        if segment != corrected[start:end]:
+            replacements.append((start, end, segment))
     for start, end, replacement in reversed(replacements):
         corrected = corrected[:start] + replacement + corrected[end:]
+    return corrected
+
+
+_SPANISH_HABER_FORMS = frozenset("""
+he has ha hemos habeis han hay
+habia habias habiamos habiais habian
+hube hubiste hubo hubimos hubisteis hubieron
+habre habras habra habremos habreis habran
+habria habrias habriamos habriais habrian
+haya hayas hayamos hayais hayan
+hubiera hubieras hubieramos hubierais hubieran
+hubiese hubieses hubiesemos hubieseis hubiesen
+hubiere hubieres hubieremos hubiereis hubieren
+haber habiendo habido habed
+""".split())
+
+
+def _protect_spanish_haber_rewrite(source_text: str, corrected: str) -> str:
+    """Restore changed haber conjugations only when surrounding words align exactly."""
+    source_words = list(re.finditer(r"\w+", source_text))
+    output_words = list(re.finditer(r"\w+", corrected))
+    source_tokens = [_normalized_plain_text(word[0]) for word in source_words]
+    output_tokens = [_normalized_plain_text(word[0]) for word in output_words]
+    source_forms = [token for token in source_tokens if token in _SPANISH_HABER_FORMS]
+    output_forms = [token for token in output_tokens if token in _SPANISH_HABER_FORMS]
+    if not source_forms or source_forms == output_forms:
+        return corrected
+    if len(source_tokens) != len(output_tokens) or any(
+        before != after and not (before in _SPANISH_HABER_FORMS and after in _SPANISH_HABER_FORMS)
+        for before, after in zip(source_tokens, output_tokens)
+    ):
+        return source_text
+    for original, output, before, after in reversed(list(zip(
+        source_words, output_words, source_tokens, output_tokens,
+    ))):
+        if before != after:
+            corrected = corrected[:output.start()] + original[0] + corrected[output.end():]
     return corrected
 
 def _isolated_expression_command_value(text: str) -> str | None:
@@ -2480,6 +2533,7 @@ def _postprocess_transcript(
     corrected = _protect_spanish_discourse_marker_rewrite(cleanup_source, corrected)
     corrected = _protect_spelled_words(cleanup_source, _prepare_spelled_words(cleanup_source), corrected)
     corrected = _protect_spoken_class_identifiers(cleanup_source, prepared_text, corrected)
+    corrected = _protect_spanish_haber_rewrite(prepared_text, corrected)
     corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
     corrected = _protect_statement_question_rewrite(prepared_text, corrected)
     corrected = _enforce_question_directives(question_source, corrected)

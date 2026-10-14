@@ -64,6 +64,9 @@ V33: Embedded English `hyphen`/`underscore` between name words deterministically
 
 V34: Successful enabled cleanup prepares bounded adjacent preposition restarts marked by comma, ellipsis, or pause dash before model and safety comparison: a/al, de/del, on/in, in/on, and repeated prepositions retain the final choice and following content, including unchanged model output and numeric phrases. Alternatives, enumerations, quotations, code, spelling/list controls, meaningful corrections, and unmarked or ambiguous starts remain literal; disabled/unavailable cleanup retains raw-text failure contracts.
 
+V35: Bounded Spanish explanatory/continuation clauses beginning with unaccented `que` plus no/ya/time cues, optionally after disculpa/perdona/perdón, remain declarative through cleanup; invented question punctuation and the explanatory `qué` accent are repaired while embedded interrogative accents and independent questions survive. Source question punctuation or an explicit pregunta control takes precedence; direct interrogative `qué` remains eligible for question formatting.
+V36: Cleanup preserves existing Spanish haber conjugations, including person, tense, and mood. Changed forms are restored locally only when all surrounding normalized words align exactly; otherwise prepared source is returned. Accent/case formatting and a safe missing auxiliary insertion when no existing haber form is present retain their existing behavior.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -87,6 +90,8 @@ T17|x|Format quantity symbols consistently|Prepare explicit euro/dollar/percent 
 
 T18|x|Clean local speech restarts|Prepare and validate bilingual preposition restarts; preserve meaningful corrections, alternatives, literal contexts, and raw failure behavior; verify model corrections and unchanged output offline.|I.postprocess,I.transcribe,C3,C7,V34
 
+T19|x|Preserve explanatory que and haber forms|Protect bounded explanatory clauses, retain explicit/direct questions and embedded accents, restore aligned haber conjugations, and verify reported text/audio cases plus offline regressions.|I.postprocess,I.transcribe,C3,C7,V35,V36
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -107,3 +112,4 @@ B15|2026-10-05|Question enforcement treated decimal points as sentence ends; liv
 B16|2026-10-06|Safety comparison discarded currency symbols and counted currency words as lost content, restoring spoken amounts; deterministic question boundaries excluded trailing quantity symbols|V32
 B17|2026-10-08|Separator confidence required a technical cue for embedded word-only identifiers, restoring spoken commands and allowing name capitalization; unprepared safety fallbacks could restore commands|V33
 B18|2026-10-08|Cleanup prompt preserved abandoned prepositions; word-retention guard rejected deletion in short or numeric phrases, and unchanged model output had no restart repair|V34
+B19|2026-10-14|Question protections omitted explanatory que clauses; broad word-retention threshold allowed single haber conjugation changes, turning correct ASR statements into questions with changed person or mood|V35,V36
