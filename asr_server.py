@@ -1618,7 +1618,11 @@ def _technical_literal_parts(sequence: str) -> tuple[list[str], list[str]]:
     return parts[::2], parts[1::2]
 
 def _technical_literal_value(words: list[str], spoken_symbols: list[str]) -> str:
-    rebuilt = [words[0].lower()]
+    numeric_code = (
+        len(words) == 2 and words[0].isupper() and words[0].isalpha()
+        and len(words[0]) >= 2 and words[1].isdigit()
+    )
+    rebuilt = [words[0] if numeric_code else words[0].lower()]
     for symbol, word in zip(spoken_symbols, words[1:]):
         rebuilt.extend((_spoken_symbol_to_literal(symbol), word.lower()))
     return "".join(rebuilt)
@@ -1767,7 +1771,10 @@ def _lowercase_joined_technical_literals(text: str) -> str:
     word = r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9]+"
 
     def replace_match(match: re.Match) -> str:
-        return match.group(0).lower()
+        value = match.group(0)
+        if re.fullmatch(r"[A-Z]{2,}[-_]\d+", value):
+            return value
+        return value.lower()
 
     return re.sub(rf"\b{word}(?:[_-]{word})+\b", replace_match, text)
 
@@ -1786,8 +1793,16 @@ def _repair_technical_literal_format(raw_text: str, corrected: str) -> str:
         ).sub(value, corrected)
     raw_text = _prepare_spoken_code_digits(raw_text)
     corrected = _prepare_spoken_code_digits(corrected)
-    corrected = _repair_spoken_technical_literals(raw_text, corrected)
-    return _lowercase_joined_technical_literals(corrected)
+    corrected = _lowercase_joined_technical_literals(
+        _repair_spoken_technical_literals(raw_text, corrected)
+    )
+    # Preserve source acronym case even when the model lowercases an existing code.
+    for match in re.finditer(r"(?<!\w)[A-Z]{2,}[-_][0-9]+(?!\w)", raw_text):
+        corrected = re.sub(
+            rf"(?<!\w){re.escape(match.group(0))}(?!\w)",
+            lambda _: match.group(0), corrected, flags=re.IGNORECASE,
+        )
+    return corrected
 
 def _protect_non_isolated_expression_rewrite(raw_text: str, corrected: str) -> str:
     """Reject laughter-only rewrites when the raw text was not an isolated command."""
@@ -2053,11 +2068,25 @@ def _prepare_spoken_alphanumeric_literals(text: str) -> str:
 
     return _SPOKEN_ALPHANUMERIC_LITERAL_RE.sub(replace, text)
 
+# In codes, separately spoken Spanish cardinal chunks concatenate: veinte dos -> 202.
+# Keep compound cardinals with conjunctions outside this bounded syntax.
+_CODE_NUMBER_CHUNKS = {
+    **_SPOKEN_DIGITS,
+    **{word: str(value) for word, value in {**_SPANISH_UNITS, **_SPANISH_TENS}.items()},
+}
+_CODE_CHUNK_PATTERN = (
+    "|".join(map(re.escape, _CODE_NUMBER_CHUNKS))
+    .replace("veintidos", "veintid[oó]s")
+    .replace("veintitres", "veintitr[eé]s")
+    .replace("dieciseis", "diecis[eé]is")
+    .replace("veintiseis", "veintis[eé]is")
+)
+_CODE_CHUNK_TOKEN = rf"(?:{_CODE_CHUNK_PATTERN}|[0-9]+)"
 _SPOKEN_CODE_DIGITS_RE = re.compile(
     rf"(?<!\w)(?P<identifier>{_TECH_TOKEN_PATTERN})\s+"
     r"(?P<separator>hyphen|dash|guion|guión|underscore|guion bajo|guión bajo|barra baja)\s+"
-    rf"(?P<digits>(?:\b(?:{_SPOKEN_DIGIT_PATTERN})\b\s+)+"
-    rf"\b(?:{_SPOKEN_DIGIT_PATTERN})\b)",
+    rf"(?P<digits>(?:\b{_CODE_CHUNK_TOKEN}\b\s+)+"
+    rf"\b{_CODE_CHUNK_TOKEN}\b)",
     re.IGNORECASE,
 )
 
@@ -2071,21 +2100,19 @@ def _spoken_code_digit_value(text: str, match: re.Match) -> str:
     }:
         return match.group(0)
     code_cue = re.search(
-        r"(?i)\b(?:code|c[oó]digo)\s*$", text[:match.start()]
+        r"(?i)\b(?:code|c[oó]digo|task|tarea|ticket|issue)\s*$", text[:match.start()]
     )
     if not code_cue and not _spoken_literal_is_high_confidence(
         text, match, [match.group("identifier"), match.group("digits")],
         [match.group("separator")],
     ):
         return match.group(0)
-    digits = "".join(
-        _SPOKEN_DIGITS[word.lower()] for word in match.group("digits").split()
-    )
-    return (
-        match.group("identifier").lower()
-        + _spoken_symbol_to_literal(match.group("separator"))
-        + digits
-    )
+    chunks = _normalized_plain_text(match.group("digits")).split()
+    digits = "".join(_CODE_NUMBER_CHUNKS.get(word, word) for word in chunks)
+    identifier = match.group("identifier")
+    if not (identifier.isalpha() and identifier.isupper() and len(identifier) >= 2):
+        identifier = identifier.lower()
+    return identifier + _spoken_symbol_to_literal(match.group("separator")) + digits
 
 def _prepare_spoken_code_digits(text: str) -> str:
     """Join explicitly separated code digit runs without changing ordinary counts."""
@@ -2474,8 +2501,9 @@ def _postprocess_transcript(
     alphanumeric_text = _prepare_spoken_alphanumeric_literals(prepared_text)
     if alphanumeric_text != prepared_text:
         prepared_text = _repair_spoken_technical_literals(alphanumeric_text, alphanumeric_text)
+    prepared_text = _prepare_spoken_code_digits(prepared_text)
     prepared_text = _repair_spoken_technical_literals(prepared_text, prepared_text)
-    prepared_text = _prepare_formatted_list_transcript(_prepare_spoken_code_digits(prepared_text))
+    prepared_text = _prepare_formatted_list_transcript(prepared_text)
     question_source = prepared_text
     prepared_text = _prepare_question_directives(prepared_text)
     system_prompt = instruction.strip() if instruction and instruction.strip() else DEFAULT_POSTPROCESS_PROMPT

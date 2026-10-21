@@ -74,6 +74,49 @@ class SpokenNumbersAndSpellingTest(unittest.TestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(self.postprocess(raw, raw), raw)
 
+    def test_v37_ticket_chunks_and_case_survive_full_cleanup(self):
+        raw = "Parece que es debido a los cambios de la tarea ZD guión veinte dos tres cuatro."
+        expected = "Parece que es debido a los cambios de la tarea ZD-20234."
+        for output in (raw, expected, expected.replace("ZD-", "zd-"),
+                       expected.replace("ZD-", "ZD "), expected.replace("20234", "2234")):
+            with self.subTest(output=output):
+                self.assertEqual(self.postprocess(raw, output), expected)
+
+    def test_v37_chunk_order_leading_zeros_and_ticket_context(self):
+        for raw, expected in (
+            ("ZD guión veinte dos tres cuatro", "ZD-20234"),
+            ("revisa la tarea ZD guion cero veinte dos tres cuatro mañana",
+             "revisa la tarea ZD-020234 mañana"),
+            ("ticket AB guion veintidós tres cuatro", "ticket AB-2234"),
+            ("issue AB guion 20 dos tres cuatro", "issue AB-20234"),
+            ("código xyz guion veinte dos tres cuatro", "código xyz-20234"),
+            ("code AB dash zero zero one two", "code AB-0012"),
+        ):
+            with self.subTest(raw=raw):
+                self.assertEqual(self.postprocess(raw, raw), expected)
+                self.assertEqual(self.postprocess(raw, expected), expected)
+
+    def test_v37_existing_uppercase_code_survives_model_lowercasing(self):
+        raw = "revisa ZD-20234 mañana"
+        self.assertEqual(self.postprocess(raw, raw.lower()), raw)
+
+    def test_v37_changed_ticket_digits_or_context_are_rejected(self):
+        raw = "revisa la tarea ZD guion cero veinte dos tres cuatro mañana"
+        expected = "revisa la tarea ZD-020234 mañana"
+        for output in (expected.replace("020234", "20234"),
+                       expected.replace("020234", "02234"),
+                       expected.replace("mañana", "hoy"),
+                       expected.replace("ZD-", "AB-")):
+            with self.subTest(output=output):
+                self.assertEqual(self.postprocess(raw, output), expected)
+
+    def test_v37_ambiguous_counts_and_unsupported_cardinals_remain_literal(self):
+        for raw in ("dijo guion veinte dos veces", "cuento veinte dos tres cuatro",
+                    "tarea ZD guion treinta y dos", "código xyz guion uno doscientos",
+                    "código xyz guion veinte dos mil"):
+            with self.subTest(raw=raw):
+                self.assertEqual(self.postprocess(raw, raw), raw)
+
     def test_v27_spoken_alphanumeric_table_prefix_survives_cleanup(self):
         raw = "Creo que en la tabla b dos b barra baja sample barra baja game barra baja history ya tenemos estos campos. Me gustaría que hicieras algo similar."
         expected = "Creo que en la tabla b2b_sample_game_history ya tenemos estos campos. Me gustaría que hicieras algo similar."

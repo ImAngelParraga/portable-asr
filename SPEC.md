@@ -35,7 +35,7 @@ V6: Optional post-processing failure returns raw Whisper text; required post-pro
 V7: Translation endpoint/extension has explicit source/target behavior, authentication, timeout, failure policy, and tests before any client exposes translation UI.
 V8: Existing transcription clients sending only current OpenAI-compatible fields retain current behavior.
 V9: Tokens, prompts, vocabulary context, and transcript bodies are absent from default logs; diagnostics contain lengths/timings/status only.
-V10: Spoken technical separators align only matching raw/corrected word sequences, accept Unicode letters/digits, preserve unrelated separators, and lowercase joined identifiers.
+V10: Spoken technical separators align only matching raw/corrected word sequences, accept Unicode letters/digits, preserve unrelated separators, and lowercase joined identifiers except preserved uppercase acronym prefixes in numeric codes (V37).
 V11: Clear Spanish and English technical cues reconstruct spoken hyphen and underscore commands through the full cleanup pipeline, including space-only LLM output, while ordinary-language uses remain unchanged.
 V12: Valid bilingual list controls format Markdown without inventing a title: `lista de ítems` / `item list` creates bullets; `lista numerada` / `numbered list` creates numbering; `nuevo ítem` / `new item` separates either type; the immediately preceding clause is preserved as an introduction with an implicit colon.
 V13: List formatting preserves source language plus every item's content, quantity, and order; control phrases disappear only in valid list context, ordinary-language uses remain prose, and comma-separated items are inferred only for clear enumerations.
@@ -67,6 +67,8 @@ V34: Successful enabled cleanup prepares bounded adjacent preposition restarts m
 V35: Bounded Spanish explanatory/continuation clauses beginning with unaccented `que` plus no/ya/time cues, optionally after disculpa/perdona/perdón, remain declarative through cleanup; invented question punctuation and the explanatory `qué` accent are repaired while embedded interrogative accents and independent questions survive. Source question punctuation or an explicit pregunta control takes precedence; direct interrogative `qué` remains eligible for question formatting.
 V36: Cleanup preserves existing Spanish haber conjugations, including person, tense, and mood. Changed forms are restored locally only when all surrounding normalized words align exactly; otherwise prepared source is returned. Accent/case formatting and a safe missing auxiliary insertion when no existing haber form is present retain their existing behavior.
 
+V37: Enabled successful cleanup concatenates two or more separately spoken Spanish single-word cardinal or digit chunks after an explicit code separator, including mixed written chunks, before LLM and safety comparison; task/tarea/ticket/issue cues establish code context. Preserve chunk order, leading zeros, and source uppercase acronym prefixes in numeric codes, including existing codes and model-lowercased output; reject changed digits, prefixes, or surrounding words. Ordinary counts, conjunction-based or unsupported cardinals remain literal; disabled/unavailable cleanup retains raw failure behavior.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -92,6 +94,8 @@ T18|x|Clean local speech restarts|Prepare and validate bilingual preposition res
 
 T19|x|Preserve explanatory que and haber forms|Protect bounded explanatory clauses, retain explicit/direct questions and embedded accents, restore aligned haber conjugations, and verify reported text/audio cases plus offline regressions.|I.postprocess,I.transcribe,C3,C7,V35,V36
 
+T20|x|Preserve numeric code chunks and acronym case|Prepare separate Spanish cardinal/digit chunks before cleanup; recognize ticket cues; preserve acronym case; test unchanged, numeric, spaced, wrong-value, leading-zero, and ordinary-prose output.|I.postprocess,I.transcribe,C3,C7,V26,V37
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -113,3 +117,4 @@ B16|2026-10-06|Safety comparison discarded currency symbols and counted currency
 B17|2026-10-08|Separator confidence required a technical cue for embedded word-only identifiers, restoring spoken commands and allowing name capitalization; unprepared safety fallbacks could restore commands|V33
 B18|2026-10-08|Cleanup prompt preserved abandoned prepositions; word-retention guard rejected deletion in short or numeric phrases, and unchanged model output had no restart repair|V34
 B19|2026-10-14|Question protections omitted explanatory que clauses; broad word-retention threshold allowed single haber conjugation changes, turning correct ASR statements into questions with changed person or mood|V35,V36
+B20|2026-10-21|Code repair accepted only single spoken digits and missed ticket cues; mixed cardinal chunks reached LLM, lost a zero, and failed safety comparison; generic identifier casing lowercased acronym prefixes|V37
