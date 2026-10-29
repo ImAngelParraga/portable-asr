@@ -123,6 +123,24 @@ class RuntimeConfigTest(unittest.TestCase):
                     self.assertEqual(command.count("--spec-type"), 1)
                     self.assertEqual(command[command.index("--spec-type") + 1], "ngram-mod")
 
+    def test_v48_local_audit_has_bounded_grammar_and_timeout(self):
+        with (
+            patch.object(asr_server, "ASR_POSTPROCESS_PROVIDER", "local-llama"),
+            patch.object(asr_server, "ASR_POSTPROCESS_TIMEOUT", 180),
+            patch.object(asr_server, "ASR_POSTPROCESS_VALIDATION_TIMEOUT", 2.0),
+            patch.object(asr_server, "_ensure_llm_server"),
+            patch.object(asr_server.urllib.request, "urlopen", return_value=FakeResponse(self._chat_payload())) as request,
+        ):
+            asr_server._llm_chat([{"role": "user", "content": "audit"}], max_tokens=100,
+                                 temperature=1, thinking=True, postprocess_mode=True, validation_mode=True)
+        payload = json.loads(request.call_args.args[0].data)
+        self.assertEqual(payload["max_tokens"], 1)
+        self.assertEqual(payload["temperature"], 0)
+        self.assertEqual(payload["grammar"], 'root ::= "A" | "B"')
+        self.assertFalse(payload["chat_template_kwargs"]["enable_thinking"])
+        self.assertTrue(payload["cache_prompt"])
+        self.assertEqual(request.call_args.kwargs["timeout"], 2)
+
     def test_v16_gpu_watcher_matches_executable_not_arguments(self):
         output = "\n".join(
             [

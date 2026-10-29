@@ -24,6 +24,10 @@ install -m 755 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/asr_se
 install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/qwen_asr_worker.py" "${ASR_DIR}/qwen_asr_worker.py"
 install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/parakeet_asr_worker.py" "${ASR_DIR}/parakeet_asr_worker.py"
 install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/requirements.txt" "${ASR_DIR}/requirements.txt"
+install -d -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${ASR_DIR}/data"
+install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/data/spanish-verbs.json.gz" "${ASR_DIR}/data/spanish-verbs.json.gz"
+install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/data/README.md" "${ASR_DIR}/data/README.md"
+install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/data/spanish-verbs-extra.json" "${ASR_DIR}/data/spanish-verbs-extra.json"
 
 if [ ! -f "${ASR_ENV_PATH}" ]; then
     install -m 600 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${ASR_ENV_SOURCE}" "${ASR_ENV_PATH}"
