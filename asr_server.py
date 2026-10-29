@@ -112,7 +112,7 @@ MAX_TRANSCRIPTION_PROMPT_CHARS = 1000
 _model_lock = threading.Lock()
 _model_instance = None
 _model_size_loaded = None
-_concurrency_semaphore = threading.Semaphore(ASR_MAX_CONCURRENCY)
+_concurrency_semaphore = asyncio.Semaphore(ASR_MAX_CONCURRENCY)
 _llm_lock = threading.RLock()
 _llm_process = None
 _llm_last_used = 0.0
@@ -650,6 +650,22 @@ def _external_gpu_users() -> list[tuple[int, str, str]]:
         external.append((pid, name, memory))
     return external
 
+def _is_service_process(pid: int) -> bool:
+    current = os.getpid()
+    visited = set()
+    while pid > 0 and pid not in visited and len(visited) < 64:
+        if pid == current:
+            return True
+        if pid == 1:
+            return False
+        visited.add(pid)
+        try:
+            fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+            pid = int(fields[1])
+        except (OSError, ValueError, IndexError):
+            return False
+    return False
+
 def _watched_gpu_processes() -> list[tuple[int, str]]:
     if not ASR_GPU_WATCH_PROCESS_PATTERNS:
         return []
@@ -678,6 +694,8 @@ def _watched_gpu_processes() -> list[tuple[int, str]]:
             pattern in executable_name or pattern in executable
             for pattern in ASR_GPU_WATCH_PROCESS_PATTERNS
         ):
+            if _is_service_process(pid):
+                continue
             matches.append((pid, cmdline))
     return matches
 
@@ -2561,15 +2579,13 @@ def _protect_spanish_discourse_marker_rewrite(raw_text: str, corrected: str) -> 
     return corrected
 
 async def _acquire_concurrency_slot(kind: str):
-    deadline = time.monotonic() + ASR_BUSY_WAIT_TIMEOUT
-    while time.monotonic() < deadline:
-        if _concurrency_semaphore.acquire(blocking=False):
-            return
-        await asyncio.sleep(0.25)
-    raise HTTPException(
-        status_code=503,
-        detail=f"Server busy, timed out waiting to start {kind}",
-    )
+    try:
+        await asyncio.wait_for(_concurrency_semaphore.acquire(), timeout=ASR_BUSY_WAIT_TIMEOUT)
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Server busy, timed out waiting to start {kind}",
+        ) from None
 
 def _prepare_preposition_restarts(text: str) -> str:
     """Remove bounded speech restarts without deleting substantive corrections."""
@@ -2727,6 +2743,8 @@ async def _run_postprocess_locked(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _concurrency_semaphore
+    _concurrency_semaphore = asyncio.Semaphore(ASR_MAX_CONCURRENCY)
     # Startup
     print(f"[asr] Starting ASR service on {ASR_LISTEN_HOST}:{ASR_LISTEN_PORT}")
     print(f"[asr] Model: {ASR_MODEL_SIZE}, Device: {ASR_DEVICE}, Max concurrency: {ASR_MAX_CONCURRENCY}")

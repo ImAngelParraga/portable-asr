@@ -79,6 +79,9 @@ V41: Cleanup shutdown reaps owned children and treats Linux zombie PIDs as exite
 V42: C++ Parakeet uses configured local library/GGUF, owns one reusable C-API context, frees returned strings on decode success/failure, and frees context on close. Its worker sees only its runtime library directory, never Whisper's libraries; Photon remains the default backend.
 V43: Single-resident mode unloads only unselected ASR engines before inference, retains the selected warm worker through cleanup and repeated requests, serializes switches against in-flight inference, and preserves legacy independent-worker behavior when disabled. Same auth/catalog/history/cleanup contracts apply to C++ Parakeet.
 
+V44: GPU process watcher excludes the service and its descendant workers/CPU audio decoders by parent ancestry; unrelated matching executables remain watched. Missing/malformed/racing process metadata never crashes the watcher.
+V45: Concurrency admission awaits available capacity without periodic polling, retains configured limits and sanitized 503 timeout behavior, and cancellation/timeouts never consume or leak slots. Initialize capacity per application lifespan/event loop.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -110,6 +113,8 @@ T21|x|Optional Parakeet Ultra engine|Add Photon worker, optional catalog/routing
 
 T22|x|Resident Ultra on Pascal|Support C++ runtime + Ultra GGUF; keep last selected ASR resident on one GPU, cleanup on its own GPU; verify context ownership, switching, audio formats, repeated requests, and live GPU residency.|I.parakeet,I.residency,I.transcribe,V38,V39,V42,V43
 
+T23|x|Remove avoidable cleanup stalls|Exclude owned decoder descendants from GPU reservations; wake queued requests directly on slot release; verify external jobs, missing process metadata, prompt wakeup, timeout and cancellation.|I.transcribe,I.postprocess,V44,V45
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -134,3 +139,5 @@ B19|2026-10-14|Question protections omitted explanatory que clauses; broad word-
 B20|2026-10-21|Code repair accepted only single spoken digits and missed ticket cues; mixed cardinal chunks reached LLM, lost a zero, and failed safety comparison; generic identifier casing lowercased acronym prefixes|V37
 B21|2026-10-29|New worker test used invalid grouped context-manager syntax; corrected mechanical typo, no new behavior invariant needed|V40
 B22|2026-10-29|Cleanup stop treated unreaped zombie PID as live and waited 20 seconds during shared-GPU handoff; inherited hub cache alias also overrode the Parakeet cache path|V40,V41
+B23|2026-10-29|GPU watcher matched service-owned CPU FFmpeg decoders as external work and could stop cleanup with a ten-second GPU reservation|V44
+B24|2026-10-29|Concurrency admission polled a threading semaphore every 250 ms, delaying queued requests after capacity was already free|V45
