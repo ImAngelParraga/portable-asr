@@ -80,6 +80,27 @@ class RuntimeConfigTest(unittest.TestCase):
         with patch.object(asr_server, "ASR_GPU_WATCH_ENABLED", False):
             self.assertFalse(asr_server._gpu_watch_enabled())
 
+    def test_v46_cleanup_penalty_is_configurable_without_affecting_general_chat(self):
+        with (
+            patch.object(asr_server, "ASR_POSTPROCESS_PROVIDER", "openai-compatible"),
+            patch.object(asr_server, "ASR_POSTPROCESS_REPEAT_PENALTY", 1.0),
+            patch.object(asr_server.urllib.request, "urlopen", return_value=FakeResponse(self._chat_payload())) as request,
+        ):
+            asr_server._llm_chat([{"role": "user", "content": "Muy, muy bien."}],
+                                 max_tokens=64, postprocess_mode=True)
+            cleanup = json.loads(request.call_args.args[0].data)
+            asr_server._llm_chat([{"role": "user", "content": "Hello."}], max_tokens=64)
+            chat = json.loads(request.call_args.args[0].data)
+
+        self.assertEqual(cleanup["repeat_penalty"], 1.0)
+        self.assertEqual(cleanup["presence_penalty"], 0.0)
+        self.assertEqual(cleanup["frequency_penalty"], 0.0)
+        self.assertTrue(cleanup["cache_prompt"])
+        self.assertFalse(cleanup["chat_template_kwargs"]["enable_thinking"])
+        self.assertEqual(chat["repeat_penalty"], 1.18)
+        self.assertNotIn("presence_penalty", chat)
+        self.assertNotIn("frequency_penalty", chat)
+
     def test_v16_gpu_watcher_matches_executable_not_arguments(self):
         output = "\n".join(
             [

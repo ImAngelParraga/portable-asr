@@ -77,6 +77,7 @@ ASR_POSTPROCESS_PROVIDER = os.environ.get("ASR_POSTPROCESS_PROVIDER", "local-lla
 ASR_POSTPROCESS_BASE_URL = os.environ.get("ASR_POSTPROCESS_BASE_URL", "http://127.0.0.1:9100/v1").rstrip("/")
 ASR_POSTPROCESS_MODEL = os.environ.get("ASR_POSTPROCESS_MODEL", "example-cleanup-model")
 ASR_POSTPROCESS_TIMEOUT = int(os.environ.get("ASR_POSTPROCESS_TIMEOUT", "180"))
+ASR_POSTPROCESS_REPEAT_PENALTY = float(os.environ.get("ASR_POSTPROCESS_REPEAT_PENALTY", "1.18"))
 ASR_POSTPROCESS_CLI = os.environ.get("ASR_POSTPROCESS_CLI", "/opt/asr-llm/bin/llama-cli")
 ASR_POSTPROCESS_CONTEXT = os.environ.get("ASR_POSTPROCESS_CONTEXT", "8192")
 ASR_POSTPROCESS_CACHE_DIR = os.environ.get("ASR_POSTPROCESS_CACHE_DIR", "/opt/asr-llm/hf-cache")
@@ -851,6 +852,9 @@ def _llm_chat(
         "chat_template_kwargs": {"enable_thinking": thinking},
     }
     if postprocess_mode:
+        payload["repeat_penalty"] = ASR_POSTPROCESS_REPEAT_PENALTY
+        payload["presence_penalty"] = 0.0
+        payload["frequency_penalty"] = 0.0
         payload["stop"] = ["<|im_end|>", "<|endoftext|>"]
         payload["cache_prompt"] = True
         payload["cache_reuse"] = ASR_LLM_CACHE_REUSE
