@@ -46,10 +46,14 @@ ASR_PARAKEET_ENABLED = os.environ.get("ASR_PARAKEET_ENABLED", "0") == "1"
 ASR_PARAKEET_MODEL_ID = os.environ.get("ASR_PARAKEET_MODEL_ID", "parakeet-ultra")
 ASR_PARAKEET_CHECKPOINT = os.environ.get("ASR_PARAKEET_CHECKPOINT", "moondream/parakeet-ultra")
 ASR_PARAKEET_PYTHON = os.environ.get("ASR_PARAKEET_PYTHON", sys.executable)
+ASR_PARAKEET_BACKEND = os.environ.get("ASR_PARAKEET_BACKEND", "photon")
+ASR_PARAKEET_LIBRARY = os.environ.get("ASR_PARAKEET_LIBRARY", "")
+ASR_PARAKEET_GGUF = os.environ.get("ASR_PARAKEET_GGUF", "")
 ASR_PARAKEET_CUDA_VISIBLE_DEVICES = os.environ.get("ASR_PARAKEET_CUDA_VISIBLE_DEVICES", "").strip()
 ASR_PARAKEET_CACHE_DIR = os.environ.get("ASR_PARAKEET_CACHE_DIR", "").strip()
 ASR_PARAKEET_KEEP_WARM = os.environ.get("ASR_PARAKEET_KEEP_WARM", "0") == "1"
 ASR_PARAKEET_STOP_LLM_FOR_TRANSCRIPTION = os.environ.get("ASR_PARAKEET_STOP_LLM_FOR_TRANSCRIPTION", "0") == "1"
+ASR_SINGLE_RESIDENT_MODEL = os.environ.get("ASR_SINGLE_RESIDENT_MODEL", "0") == "1"
 ASR_BEAM_SIZE = int(os.environ.get("ASR_BEAM_SIZE", "5"))
 ASR_VAD_FILTER = os.environ.get("ASR_VAD_FILTER", "0") == "1"
 ASR_VAD_MIN_SILENCE_MS = int(os.environ.get("ASR_VAD_MIN_SILENCE_MS", "500"))
@@ -119,6 +123,7 @@ _qwen_worker_lock = threading.RLock()
 _qwen_worker_process = None
 _parakeet_worker_lock = threading.RLock()
 _parakeet_worker_process = None
+_asr_engine_lock = threading.RLock()
 _audio_history_lock = threading.RLock()
 
 security = HTTPBearer(auto_error=False)
@@ -1056,6 +1061,7 @@ def _stop_whisper_worker(reason: str = "requested"):
             except Exception:
                 try:
                     process.kill()
+                    process.wait(timeout=10)
                 except Exception:
                     pass
         print(f"[asr] Whisper worker stopped ({reason})")
@@ -1174,6 +1180,7 @@ def _stop_qwen_worker(reason: str = "requested"):
                 process.wait(timeout=10)
             except Exception:
                 process.kill()
+                process.wait(timeout=10)
         print(f"[asr] Qwen worker stopped ({reason})")
 
 def _start_qwen_worker_locked():
@@ -1271,6 +1278,13 @@ def _start_parakeet_worker_locked():
         env["HF_HUB_CACHE"] = str(Path(ASR_PARAKEET_CACHE_DIR) / "hub")
         env["HUGGINGFACE_HUB_CACHE"] = env["HF_HUB_CACHE"]
     env["ASR_PARAKEET_CHECKPOINT"] = ASR_PARAKEET_CHECKPOINT
+    env["ASR_PARAKEET_BACKEND"] = ASR_PARAKEET_BACKEND
+    if ASR_PARAKEET_BACKEND == "cpp":
+        env["ASR_PARAKEET_LIBRARY"] = ASR_PARAKEET_LIBRARY
+        env["ASR_PARAKEET_GGUF"] = ASR_PARAKEET_GGUF
+        env["PARAKEET_DEVICE"] = "CUDA0"
+        if ASR_PARAKEET_LIBRARY:
+            env["LD_LIBRARY_PATH"] = str(Path(ASR_PARAKEET_LIBRARY).resolve().parent)
     _parakeet_worker_process = subprocess.Popen(
         [ASR_PARAKEET_PYTHON, str(Path(__file__).with_name("parakeet_asr_worker.py"))],
         env=env, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -1306,6 +1320,21 @@ def _run_parakeet_transcription(audio_path: str, language: str | None, temperatu
                 _stop_parakeet_worker("request complete")
         timings["parakeet_worker_roundtrip_ms"] = _timing_ms(started)
         return segments, timings
+
+def _dispatch_transcription(engine: str, audio_path: str, language: str | None, temperature: float, prompt: str | None = None):
+    transcribe = {"qwen": _run_qwen_transcription, "parakeet": _run_parakeet_transcription}.get(engine, _run_transcription)
+    if not ASR_SINGLE_RESIDENT_MODEL:
+        return transcribe(audio_path, language, temperature, prompt)
+    # Hold the lock through inference so another request cannot unload an active worker.
+    with _asr_engine_lock:
+        if engine != "whisper":
+            _stop_whisper_worker("ASR model switch")
+            unload_model()
+        if engine != "qwen":
+            _stop_qwen_worker("ASR model switch")
+        if engine != "parakeet":
+            _stop_parakeet_worker("ASR model switch")
+        return transcribe(audio_path, language, temperature, prompt)
 
 def _transcribe_worker_loop():
     model_obj = load_model()
@@ -2950,11 +2979,11 @@ async def transcriptions(
 
         try:
             transcribe_started = time.monotonic()
-            transcribe_fn = {"qwen": _run_qwen_transcription, "parakeet": _run_parakeet_transcription}.get(engine, _run_transcription)
             text_parts, engine_timings = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,
-                    transcribe_fn,
+                    _dispatch_transcription,
+                    engine,
                     temp_path,
                     language,
                     temperature,

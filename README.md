@@ -201,6 +201,26 @@ The example releases the worker and CUDA memory after every request, before norm
 
 Parakeet detects language automatically. The service accepts existing client `language`, `prompt`, and `temperature` fields for compatibility, but Parakeet does not use them for forced language, vocabulary biasing, or sampling. Authentication, optional cleanup, request timing, and diagnostic history behave like the other engines. Worker logs and failures exclude transcript contents.
 
+### Ultra on a Pascal GPU
+
+The `cpp` backend loads a locally built [parakeet.cpp](https://github.com/mudler/parakeet.cpp) shared library and a converted Ultra GGUF. This avoids Photon's Ampere requirement. Use a CUDA toolkit and compiler compatible with your card; for a GTX 1070, build for CUDA architecture `61`. The F16 GGUF preserves the Ultra checkpoint without low-bit quantization; it is not NVIDIA's original checkpoint.
+
+Build with `PARAKEET_GGML_CUDA=ON`, `PARAKEET_SHARED=ON`, and `CMAKE_CUDA_ARCHITECTURES=61`. Copy `libparakeet.so` and its `libggml*.so*` dependencies into one service-accessible directory, and put `ultra-f16.gguf` in a readable model directory. The worker uses that library directory instead of Whisper's CUDA library overrides. No Photon or PyTorch package is needed in this worker's Python environment.
+
+```env
+ASR_PARAKEET_BACKEND=cpp
+ASR_PARAKEET_LIBRARY=/opt/portable-asr/parakeet-cpp/lib/libparakeet.so
+ASR_PARAKEET_GGUF=/opt/portable-asr/parakeet-cpp/models/ultra-f16.gguf
+ASR_PARAKEET_PYTHON=/opt/portable-asr/venv/bin/python
+ASR_PARAKEET_CUDA_VISIBLE_DEVICES=0
+ASR_PARAKEET_KEEP_WARM=1
+ASR_PARAKEET_STOP_LLM_FOR_TRANSCRIPTION=0
+ASR_WHISPER_KEEP_WARM=1
+ASR_SINGLE_RESIDENT_MODEL=1
+```
+
+With single-resident mode, selecting Whisper, Qwen, or Parakeet unloads the other ASR workers before inference. Repeated requests keep the selected model loaded through cleanup. Keep all ASR engines on the same GPU and cleanup on its own GPU. Switching models incurs loading time; ordinary requests avoid that cost. The default model selection and model list order do not change.
+
 ## CPU Mode
 
 CPU mode is the most portable setup:

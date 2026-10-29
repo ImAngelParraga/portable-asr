@@ -24,7 +24,8 @@ I.config: `ASR_POSTPROCESS_*` owns provider/model/token/timeout/prompt/failure p
 I.models: `model=qwen3-asr-1.7b` selects resident Qwen3-ASR when `ASR_QWEN_ENABLED=1`; all other legacy model values select Whisper. `ASR_QWEN_*` configures checkpoint, interpreter, and GPU placement.
 I.catalog: Authenticated `GET /v1/audio/models` lists transcription model IDs in OpenAI list format; `GET /v1/models` keeps its broader compatibility catalog.
 I.history: Optional `ASR_AUDIO_HISTORY_*` settings enable local diagnostic records; successful archived audio responses add `request_id`, failed archived requests return `X-Request-ID`. No HTTP archive access.
-I.parakeet: `model=parakeet-ultra` selects Photon worker only when `ASR_PARAKEET_ENABLED=1`; `ASR_PARAKEET_*` configures ID, checkpoint, interpreter, GPU, cache, residency, and optional local cleanup GPU handoff. Language detection automatic; vocabulary hints and temperature ignored.
+I.parakeet: `model=parakeet-ultra` selects isolated worker only when `ASR_PARAKEET_ENABLED=1`; `ASR_PARAKEET_BACKEND=photon|cpp` selects Photon or local C-API library + GGUF. Other `ASR_PARAKEET_*` settings configure ID, interpreter, GPU, cache, residency, and optional local cleanup GPU handoff. Language detection automatic; vocabulary hints and temperature ignored.
+I.residency: `ASR_SINGLE_RESIDENT_MODEL=1` serializes ASR inference and unloads other ASR engines before the selected engine runs; enable keep-warm on persistent engines. Cleanup residency independent.
 
 §V
 V1: Audio processing order is fixed and tested: validate request → transcribe with optional `language`/`prompt` context → optional conservative cleanup → optional explicitly requested translation → response.
@@ -75,6 +76,9 @@ V39: Parakeet worker decodes WAV/AAC/M4A to request-local mono 16 kHz PCM, remov
 V40: Parakeet worker uses isolated Python/CUDA libraries and explicit GPU/cache configuration, overriding inherited Hugging Face hub cache aliases; optional shared-GPU mode stops local cleanup before inference and terminates nonresident worker before cleanup. Resident worker counts as service-owned; shutdown/failure cleans worker resources.
 V41: Cleanup shutdown reaps owned children and treats Linux zombie PIDs as exited, so GPU handoff does not wait for the stop timeout after the process already released its resources.
 
+V42: C++ Parakeet uses configured local library/GGUF, owns one reusable C-API context, frees returned strings on decode success/failure, and frees context on close. Its worker sees only its runtime library directory, never Whisper's libraries; Photon remains the default backend.
+V43: Single-resident mode unloads only unselected ASR engines before inference, retains the selected warm worker through cleanup and repeated requests, serializes switches against in-flight inference, and preserves legacy independent-worker behavior when disabled. Same auth/catalog/history/cleanup contracts apply to C++ Parakeet.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -103,6 +107,8 @@ T19|x|Preserve explanatory que and haber forms|Protect bounded explanatory claus
 T20|x|Preserve numeric code chunks and acronym case|Prepare separate Spanish cardinal/digit chunks before cleanup; recognize ticket cues; preserve acronym case; test unchanged, numeric, spaced, wrong-value, leading-zero, and ordinary-prose output.|I.postprocess,I.transcribe,C3,C7,V26,V37
 
 T21|x|Optional Parakeet Ultra engine|Add Photon worker, optional catalog/routing/config, shared-GPU handoff and deployment support; verify offline contracts plus live WAV/M4A with unchanged default.|I.parakeet,I.catalog,I.transcribe,V38,V39,V40,V41
+
+T22|x|Resident Ultra on Pascal|Support C++ runtime + Ultra GGUF; keep last selected ASR resident on one GPU, cleanup on its own GPU; verify context ownership, switching, audio formats, repeated requests, and live GPU residency.|I.parakeet,I.residency,I.transcribe,V38,V39,V42,V43
 
 §B
 id|date|cause|fix

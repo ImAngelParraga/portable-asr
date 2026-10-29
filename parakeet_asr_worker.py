@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Isolated Photon transcription worker; JSON lines on stdin/stdout."""
+"""Isolated Parakeet transcription worker; JSON lines on stdin/stdout."""
 
 from contextlib import redirect_stdout
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,49 @@ import subprocess
 import sys
 import tempfile
 import time
+
+
+class CppParakeet:
+    def __init__(self, library: str, checkpoint: str):
+        if not library or not checkpoint:
+            raise ValueError("Parakeet C++ library and GGUF paths are required")
+        self.library = ctypes.CDLL(library)
+        self.library.parakeet_capi_load.argtypes = [ctypes.c_char_p]
+        self.library.parakeet_capi_load.restype = ctypes.c_void_p
+        self.library.parakeet_capi_transcribe_path.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        self.library.parakeet_capi_transcribe_path.restype = ctypes.c_void_p
+        self.library.parakeet_capi_free_string.argtypes = [ctypes.c_void_p]
+        self.library.parakeet_capi_free_string.restype = None
+        self.library.parakeet_capi_free.argtypes = [ctypes.c_void_p]
+        self.library.parakeet_capi_free.restype = None
+        self.context = self.library.parakeet_capi_load(os.fsencode(checkpoint))
+        if not self.context:
+            raise RuntimeError("Could not load Parakeet GGUF")
+
+    def transcribe(self, *, audio: str, timestamps: str = "none") -> dict:
+        result = self.library.parakeet_capi_transcribe_path(self.context, os.fsencode(audio), 0)
+        if not result:
+            raise RuntimeError("Parakeet C++ transcription failed")
+        try:
+            return {"text": ctypes.string_at(result).decode("utf-8")}
+        finally:
+            self.library.parakeet_capi_free_string(result)
+
+    def close(self):
+        if self.context:
+            self.library.parakeet_capi_free(self.context)
+            self.context = None
+
+
+def load_model():
+    backend = os.environ.get("ASR_PARAKEET_BACKEND", "photon")
+    if backend == "cpp":
+        return CppParakeet(os.environ.get("ASR_PARAKEET_LIBRARY", ""),
+                           os.environ.get("ASR_PARAKEET_GGUF", ""))
+    if backend != "photon":
+        raise ValueError("Unknown Parakeet backend")
+    import moondream as md
+    return md.photon(os.environ.get("ASR_PARAKEET_CHECKPOINT", "moondream/parakeet-ultra"), device="cuda")
 
 
 def transcribe_request(model, request: dict) -> list[str]:
@@ -41,11 +85,7 @@ def main():
                 # Library output must not mix with the response protocol.
                 with redirect_stdout(sys.stderr):
                     if model is None:
-                        import moondream as md
-                        model = md.photon(
-                            os.environ.get("ASR_PARAKEET_CHECKPOINT", "moondream/parakeet-ultra"),
-                            device="cuda",
-                        )
+                        model = load_model()
                     segments = transcribe_request(model, request)
                 response = {"request_id": request_id, "ok": True, "segments": segments,
                             "timings": {"parakeet_transcribe_ms": round((time.monotonic() - started) * 1000)}}
