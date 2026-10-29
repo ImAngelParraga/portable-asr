@@ -117,7 +117,7 @@ T22|x|Resident Ultra on Pascal|Support C++ runtime + Ultra GGUF; keep last selec
 
 T23|x|Remove avoidable cleanup stalls|Exclude owned decoder descendants from GPU reservations; wake queued requests directly on slot release; verify external jobs, missing process metadata, prompt wakeup, timeout and cancellation.|I.transcribe,I.postprocess,V44,V45
 T24|x|Configure cleanup repetition penalty|Expose cleanup-only repetition setting so deployed model profiles reproduce measured copy-preserving behavior; verify request payload isolation from general chat.|I.config,I.postprocess,C3,C7,V46
-T25|~|Enable optional copy speculation|Expose local llama-server speculative type, preserve legacy default, deploy measured ngram-mod profile and verify live output parity plus ASR/cleanup residency.|I.config,I.postprocess,V43,V47
+T25|x|Enable optional copy speculation|Expose local llama-server speculative type, preserve legacy default, deploy measured ngram-mod profile and verify live output parity plus ASR/cleanup residency.|I.config,I.postprocess,V43,V47
 
 §B
 id|date|cause|fix
