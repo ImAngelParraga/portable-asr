@@ -97,6 +97,7 @@ ASR_LLM_BUSY_WAIT_TIMEOUT = int(os.environ.get("ASR_LLM_BUSY_WAIT_TIMEOUT", "600
 ASR_LLM_LOG_FILE = os.environ.get("ASR_LLM_LOG_FILE", "/opt/portable-asr/llama-server.log")
 ASR_LLM_PID_FILE = os.environ.get("ASR_LLM_PID_FILE", "/opt/portable-asr/llama-server.pid")
 ASR_LLM_CACHE_REUSE = int(os.environ.get("ASR_LLM_CACHE_REUSE", "256"))
+ASR_LLM_SPEC_TYPE = os.environ.get("ASR_LLM_SPEC_TYPE", "none").strip() or "none"
 ASR_LLM_SERVER_BIN = os.environ.get("ASR_LLM_SERVER_BIN", "/opt/asr-llm/bin/llama-server")
 ASR_GPU_WATCH_ENABLED = os.environ.get("ASR_GPU_WATCH_ENABLED", "0") == "1"
 ASR_GPU_WATCH_PROCESS_PATTERNS = [
@@ -781,6 +782,8 @@ def _start_llm_server():
             "--no-slots",
             "--log-disable",
         ]
+        if ASR_LLM_SPEC_TYPE != "none":
+            cmd.extend(["--spec-type", ASR_LLM_SPEC_TYPE])
         if ASR_LLM_DEVICE:
             cmd.extend(["--device", ASR_LLM_DEVICE])
         log_file = open(ASR_LLM_LOG_FILE, "ab", buffering=0)

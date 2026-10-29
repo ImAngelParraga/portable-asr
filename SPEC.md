@@ -82,6 +82,7 @@ V43: Single-resident mode unloads only unselected ASR engines before inference, 
 V44: GPU process watcher excludes the service and its descendant workers/CPU audio decoders by parent ancestry; unrelated matching executables remain watched. Missing/malformed/racing process metadata never crashes the watcher.
 V45: Concurrency admission awaits available capacity without periodic polling, retains configured limits and sanitized 503 timeout behavior, and cancellation/timeouts never consume or leak slots. Initialize capacity per application lifespan/event loop.
 V46: Cleanup requests use configured `ASR_POSTPROCESS_REPEAT_PENALTY` (legacy default 1.18) with neutral presence/frequency penalties; general chat retains its existing repetition policy. Cache, thinking and failure contracts remain intact.
+V47: Local cleanup startup forwards opt-in `ASR_LLM_SPEC_TYPE` to llama-server; default none omits the flag for legacy-runtime compatibility. Copy speculation uses the existing model and preserves configured GPU placement.
 
 §T
 id|status|task|detail|cites
@@ -116,6 +117,7 @@ T22|x|Resident Ultra on Pascal|Support C++ runtime + Ultra GGUF; keep last selec
 
 T23|x|Remove avoidable cleanup stalls|Exclude owned decoder descendants from GPU reservations; wake queued requests directly on slot release; verify external jobs, missing process metadata, prompt wakeup, timeout and cancellation.|I.transcribe,I.postprocess,V44,V45
 T24|x|Configure cleanup repetition penalty|Expose cleanup-only repetition setting so deployed model profiles reproduce measured copy-preserving behavior; verify request payload isolation from general chat.|I.config,I.postprocess,C3,C7,V46
+T25|~|Enable optional copy speculation|Expose local llama-server speculative type, preserve legacy default, deploy measured ngram-mod profile and verify live output parity plus ASR/cleanup residency.|I.config,I.postprocess,V43,V47
 
 §B
 id|date|cause|fix

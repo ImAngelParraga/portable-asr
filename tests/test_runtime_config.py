@@ -1,6 +1,6 @@
 import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, mock_open, patch
 
 import asr_server
 
@@ -100,6 +100,28 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertEqual(chat["repeat_penalty"], 1.18)
         self.assertNotIn("presence_penalty", chat)
         self.assertNotIn("frequency_penalty", chat)
+
+    def test_v47_copy_speculation_is_opt_in_on_local_server_start(self):
+        for spec_type in ("none", "ngram-mod"):
+            with (
+                self.subTest(spec_type=spec_type),
+                patch.object(asr_server, "ASR_LLM_SPEC_TYPE", spec_type),
+                patch.object(asr_server, "_llm_process", None),
+                patch.object(asr_server, "_llm_health", side_effect=[False, True]),
+                patch.object(asr_server, "_gpu_watch_enabled", return_value=False),
+                patch.object(asr_server, "open", mock_open(), create=True),
+                patch.object(asr_server.Path, "write_text"),
+                patch.object(asr_server.subprocess, "Popen", return_value=Mock(poll=Mock(return_value=None))) as spawn,
+            ):
+                asr_server._start_llm_server()
+                command = spawn.call_args.args[0]
+                self.assertEqual(command[command.index("-hf") + 1], asr_server.ASR_POSTPROCESS_MODEL)
+                self.assertNotIn("--model-draft", command)
+                if spec_type == "none":
+                    self.assertNotIn("--spec-type", command)
+                else:
+                    self.assertEqual(command.count("--spec-type"), 1)
+                    self.assertEqual(command[command.index("--spec-type") + 1], "ngram-mod")
 
     def test_v16_gpu_watcher_matches_executable_not_arguments(self):
         output = "\n".join(
