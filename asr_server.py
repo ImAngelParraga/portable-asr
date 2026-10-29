@@ -42,6 +42,14 @@ ASR_QWEN_MODEL_ID = os.environ.get("ASR_QWEN_MODEL_ID", "qwen3-asr-1.7b")
 ASR_QWEN_CHECKPOINT = os.environ.get("ASR_QWEN_CHECKPOINT", "Qwen/Qwen3-ASR-1.7B")
 ASR_QWEN_PYTHON = os.environ.get("ASR_QWEN_PYTHON", sys.executable)
 ASR_QWEN_CUDA_VISIBLE_DEVICES = os.environ.get("ASR_QWEN_CUDA_VISIBLE_DEVICES", "").strip()
+ASR_PARAKEET_ENABLED = os.environ.get("ASR_PARAKEET_ENABLED", "0") == "1"
+ASR_PARAKEET_MODEL_ID = os.environ.get("ASR_PARAKEET_MODEL_ID", "parakeet-ultra")
+ASR_PARAKEET_CHECKPOINT = os.environ.get("ASR_PARAKEET_CHECKPOINT", "moondream/parakeet-ultra")
+ASR_PARAKEET_PYTHON = os.environ.get("ASR_PARAKEET_PYTHON", sys.executable)
+ASR_PARAKEET_CUDA_VISIBLE_DEVICES = os.environ.get("ASR_PARAKEET_CUDA_VISIBLE_DEVICES", "").strip()
+ASR_PARAKEET_CACHE_DIR = os.environ.get("ASR_PARAKEET_CACHE_DIR", "").strip()
+ASR_PARAKEET_KEEP_WARM = os.environ.get("ASR_PARAKEET_KEEP_WARM", "0") == "1"
+ASR_PARAKEET_STOP_LLM_FOR_TRANSCRIPTION = os.environ.get("ASR_PARAKEET_STOP_LLM_FOR_TRANSCRIPTION", "0") == "1"
 ASR_BEAM_SIZE = int(os.environ.get("ASR_BEAM_SIZE", "5"))
 ASR_VAD_FILTER = os.environ.get("ASR_VAD_FILTER", "0") == "1"
 ASR_VAD_MIN_SILENCE_MS = int(os.environ.get("ASR_VAD_MIN_SILENCE_MS", "500"))
@@ -109,6 +117,8 @@ _whisper_worker_lock = threading.RLock()
 _whisper_worker_process = None
 _qwen_worker_lock = threading.RLock()
 _qwen_worker_process = None
+_parakeet_worker_lock = threading.RLock()
+_parakeet_worker_process = None
 _audio_history_lock = threading.RLock()
 
 security = HTTPBearer(auto_error=False)
@@ -540,11 +550,17 @@ def _llm_base_url() -> str:
 def _process_exists(pid: int) -> bool:
     try:
         os.kill(pid, 0)
-        return True
     except ProcessLookupError:
         return False
     except PermissionError:
         return True
+    try:
+        # An exited child can retain its PID until its parent reaps it.
+        if Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] == "Z":
+            return False
+    except (OSError, IndexError):
+        pass
+    return True
 
 def _pid_file_process() -> int | None:
     try:
@@ -612,15 +628,19 @@ def _external_gpu_users() -> list[tuple[int, str, str]]:
     own_pid = os.getpid()
     whisper_pid = None
     qwen_pid = None
+    parakeet_pid = None
     with _whisper_worker_lock:
         if _whisper_worker_process is not None and _whisper_worker_process.poll() is None:
             whisper_pid = _whisper_worker_process.pid
     with _qwen_worker_lock:
         if _qwen_worker_process is not None and _qwen_worker_process.poll() is None:
             qwen_pid = _qwen_worker_process.pid
+    with _parakeet_worker_lock:
+        if _parakeet_worker_process is not None and _parakeet_worker_process.poll() is None:
+            parakeet_pid = _parakeet_worker_process.pid
     external = []
     for pid, name, memory in _gpu_compute_apps():
-        if pid in llama_pids or pid in (own_pid, whisper_pid, qwen_pid):
+        if pid in llama_pids or pid in (own_pid, whisper_pid, qwen_pid, parakeet_pid):
             continue
         external.append((pid, name, memory))
     return external
@@ -677,7 +697,11 @@ def _stop_llm_server(reason: str = "requested"):
             except PermissionError as exc:
                 print(f"[llm] Could not stop llama-server pid {pid}: {exc}")
         deadline = time.time() + 20
-        while time.time() < deadline and _llm_server_processes():
+        while time.time() < deadline:
+            if _llm_process is not None:
+                _llm_process.poll()
+            if not _llm_server_processes():
+                break
             time.sleep(0.25)
         for pid in _llm_server_processes():
             try:
@@ -1126,11 +1150,15 @@ def _run_transcription(audio_path: str, language: str | None, temperature: float
     return _run_transcription_subprocess(audio_path, language, temperature, prompt)
 
 def _transcription_engine(model: str | None) -> str:
+    if model == ASR_PARAKEET_MODEL_ID:
+        if not ASR_PARAKEET_ENABLED:
+            raise HTTPException(status_code=400, detail="Parakeet Ultra is not enabled")
+        return "parakeet"
     if model == ASR_QWEN_MODEL_ID:
         if not ASR_QWEN_ENABLED:
             raise HTTPException(status_code=400, detail="Qwen3-ASR is not enabled")
         return "qwen"
-    # Preserve legacy clients: model names other than the Qwen selector used Whisper.
+    # Preserve legacy clients outside the explicit optional-engine selectors.
     return "whisper"
 
 def _stop_qwen_worker(reason: str = "requested"):
@@ -1208,6 +1236,76 @@ def _run_qwen_transcription(audio_path: str, language: str | None, temperature: 
         timings = payload.get("timings") if isinstance(payload.get("timings"), dict) else {}
         timings["qwen_worker_roundtrip_ms"] = _timing_ms(request_started)
         return [str(segment) for segment in segments], timings
+
+def _stop_parakeet_worker(reason: str = "requested"):
+    global _parakeet_worker_process
+    with _parakeet_worker_lock:
+        process = _parakeet_worker_process
+        _parakeet_worker_process = None
+        if process is None:
+            return
+        if process.poll() is None:
+            try:
+                process.terminate()
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=10)
+        for stream in (process.stdin, process.stdout):
+            if stream is not None:
+                stream.close()
+        print(f"[asr] Parakeet worker stopped ({reason})")
+
+def _start_parakeet_worker_locked():
+    global _parakeet_worker_process
+    if _parakeet_worker_process is not None and _parakeet_worker_process.poll() is None:
+        return
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    env.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    env.pop("LD_LIBRARY_PATH", None)
+    if ASR_PARAKEET_CUDA_VISIBLE_DEVICES:
+        env["CUDA_VISIBLE_DEVICES"] = ASR_PARAKEET_CUDA_VISIBLE_DEVICES
+    if ASR_PARAKEET_CACHE_DIR:
+        env["HF_HOME"] = ASR_PARAKEET_CACHE_DIR
+        env["HF_HUB_CACHE"] = str(Path(ASR_PARAKEET_CACHE_DIR) / "hub")
+        env["HUGGINGFACE_HUB_CACHE"] = env["HF_HUB_CACHE"]
+    env["ASR_PARAKEET_CHECKPOINT"] = ASR_PARAKEET_CHECKPOINT
+    _parakeet_worker_process = subprocess.Popen(
+        [ASR_PARAKEET_PYTHON, str(Path(__file__).with_name("parakeet_asr_worker.py"))],
+        env=env, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, bufsize=1,
+    )
+    print(f"[asr] Parakeet worker started pid={_parakeet_worker_process.pid}")
+
+def _run_parakeet_transcription(audio_path: str, language: str | None, temperature: float, prompt: str | None = None) -> tuple[list[str], dict]:
+    with _parakeet_worker_lock:
+        started = time.monotonic()
+        try:
+            _start_parakeet_worker_locked()
+            process = _parakeet_worker_process
+            if process.stdin is None:
+                raise RuntimeError("Parakeet worker stdin unavailable")
+            request_id = uuid.uuid4().hex
+            process.stdin.write(json.dumps({"request_id": request_id, "audio_path": audio_path}) + "\n")
+            process.stdin.flush()
+            payload = _read_whisper_worker_response(
+                process, time.monotonic() + ASR_REQUEST_TIMEOUT, request_id, "Parakeet"
+            )
+            if payload.get("ok") is not True:
+                raise RuntimeError("Parakeet transcription failed")
+            segments = payload.get("segments")
+            if not isinstance(segments, list) or not all(isinstance(s, str) for s in segments):
+                raise RuntimeError("Parakeet worker returned invalid segments")
+            timings = payload.get("timings") if isinstance(payload.get("timings"), dict) else {}
+        except Exception:
+            _stop_parakeet_worker("request failure")
+            raise
+        finally:
+            if not ASR_PARAKEET_KEEP_WARM:
+                _stop_parakeet_worker("request complete")
+        timings["parakeet_worker_roundtrip_ms"] = _timing_ms(started)
+        return segments, timings
 
 def _transcribe_worker_loop():
     model_obj = load_model()
@@ -2618,6 +2716,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     _stop_whisper_worker("ASR service shutdown")
     _stop_qwen_worker("ASR service shutdown")
+    _stop_parakeet_worker("ASR service shutdown")
     unload_model()
     _stop_llm_server("ASR service shutdown")
     print("[asr] Shutdown complete")
@@ -2638,6 +2737,8 @@ async def models(token: str = Depends(verify_token)):
     model_ids = ["whisper-1"]
     if ASR_QWEN_ENABLED:
         model_ids.append(ASR_QWEN_MODEL_ID)
+    if ASR_PARAKEET_ENABLED:
+        model_ids.append(ASR_PARAKEET_MODEL_ID)
     model_ids.append(ASR_POSTPROCESS_MODEL)
     return {
         "object": "list",
@@ -2649,6 +2750,8 @@ async def audio_models(token: str = Depends(verify_token)):
     model_ids = ["whisper-1"]
     if ASR_QWEN_ENABLED:
         model_ids.append(ASR_QWEN_MODEL_ID)
+    if ASR_PARAKEET_ENABLED:
+        model_ids.append(ASR_PARAKEET_MODEL_ID)
     return {
         "object": "list",
         "data": [{"id": model_id, "object": "model", "owned_by": "local"} for model_id in model_ids],
@@ -2831,7 +2934,7 @@ async def transcriptions(
             {
                 "engine": engine,
                 "model": model,
-                "asr_model": ASR_QWEN_CHECKPOINT if engine == "qwen" else ASR_MODEL_SIZE,
+                "asr_model": {"qwen": ASR_QWEN_CHECKPOINT, "parakeet": ASR_PARAKEET_CHECKPOINT}.get(engine, ASR_MODEL_SIZE),
                 "language": language,
                 "temperature": temperature,
                 "prompt_chars": len(transcription_prompt or ""),
@@ -2840,12 +2943,14 @@ async def transcriptions(
             },
         )
 
-        if ASR_STOP_LLM_FOR_TRANSCRIPTION:
-            _stop_llm_server("Whisper transcription requested")
+        if ASR_STOP_LLM_FOR_TRANSCRIPTION or (
+            engine == "parakeet" and ASR_PARAKEET_STOP_LLM_FOR_TRANSCRIPTION and _postprocess_uses_local_server()
+        ):
+            _stop_llm_server("transcription requested")
 
         try:
             transcribe_started = time.monotonic()
-            transcribe_fn = _run_qwen_transcription if engine == "qwen" else _run_transcription
+            transcribe_fn = {"qwen": _run_qwen_transcription, "parakeet": _run_parakeet_transcription}.get(engine, _run_transcription)
             text_parts, engine_timings = await asyncio.wait_for(
                 asyncio.get_event_loop().run_in_executor(
                     None,

@@ -3,7 +3,7 @@
 §G
 G1: Make ASR service sole owner of transcription semantics: vocabulary biasing, cleanup, filler handling, correction, and optional translation.
 G2: Return final semantic transcript from audio endpoint so thin clients only present/insert received text.
-G3: Select Whisper or optional Qwen3-ASR per request through existing OpenAI-compatible `model` field.
+G3: Select Whisper, optional Qwen3-ASR, or optional Parakeet Ultra per request through existing OpenAI-compatible `model` field.
 G4: Advertise currently enabled transcription models to clients without exposing the cleanup LLM as an ASR choice.
 
 §C
@@ -24,6 +24,7 @@ I.config: `ASR_POSTPROCESS_*` owns provider/model/token/timeout/prompt/failure p
 I.models: `model=qwen3-asr-1.7b` selects resident Qwen3-ASR when `ASR_QWEN_ENABLED=1`; all other legacy model values select Whisper. `ASR_QWEN_*` configures checkpoint, interpreter, and GPU placement.
 I.catalog: Authenticated `GET /v1/audio/models` lists transcription model IDs in OpenAI list format; `GET /v1/models` keeps its broader compatibility catalog.
 I.history: Optional `ASR_AUDIO_HISTORY_*` settings enable local diagnostic records; successful archived audio responses add `request_id`, failed archived requests return `X-Request-ID`. No HTTP archive access.
+I.parakeet: `model=parakeet-ultra` selects Photon worker only when `ASR_PARAKEET_ENABLED=1`; `ASR_PARAKEET_*` configures ID, checkpoint, interpreter, GPU, cache, residency, and optional local cleanup GPU handoff. Language detection automatic; vocabulary hints and temperature ignored.
 
 §V
 V1: Audio processing order is fixed and tested: validate request → transcribe with optional `language`/`prompt` context → optional conservative cleanup → optional explicitly requested translation → response.
@@ -69,6 +70,11 @@ V36: Cleanup preserves existing Spanish haber conjugations, including person, te
 
 V37: Enabled successful cleanup concatenates two or more separately spoken Spanish single-word cardinal or digit chunks after an explicit code separator, including mixed written chunks, before LLM and safety comparison; task/tarea/ticket/issue cues establish code context. Preserve chunk order, leading zeros, and source uppercase acronym prefixes in numeric codes, including existing codes and model-lowercased output; reject changed digits, prefixes, or surrounding words. Ordinary counts, conjunction-based or unsupported cardinals remain literal; disabled/unavailable cleanup retains raw failure behavior.
 
+V38: Parakeet selector defaults disabled, returns 400 when disabled, appears in authenticated catalogs only when enabled, preserves default/legacy Whisper and Qwen routing, and uses existing cleanup/history contracts without client changes.
+V39: Parakeet worker decodes WAV/AAC/M4A to request-local mono 16 kHz PCM, removes temporary audio on success/failure, never forwards unsupported language/prompt/temperature options, and returns sanitized failures without audio/transcript contents in logs.
+V40: Parakeet worker uses isolated Python/CUDA libraries and explicit GPU/cache configuration, overriding inherited Hugging Face hub cache aliases; optional shared-GPU mode stops local cleanup before inference and terminates nonresident worker before cleanup. Resident worker counts as service-owned; shutdown/failure cleans worker resources.
+V41: Cleanup shutdown reaps owned children and treats Linux zombie PIDs as exited, so GPU handoff does not wait for the stop timeout after the process already released its resources.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -96,6 +102,8 @@ T19|x|Preserve explanatory que and haber forms|Protect bounded explanatory claus
 
 T20|x|Preserve numeric code chunks and acronym case|Prepare separate Spanish cardinal/digit chunks before cleanup; recognize ticket cues; preserve acronym case; test unchanged, numeric, spaced, wrong-value, leading-zero, and ordinary-prose output.|I.postprocess,I.transcribe,C3,C7,V26,V37
 
+T21|x|Optional Parakeet Ultra engine|Add Photon worker, optional catalog/routing/config, shared-GPU handoff and deployment support; verify offline contracts plus live WAV/M4A with unchanged default.|I.parakeet,I.catalog,I.transcribe,V38,V39,V40,V41
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -118,3 +126,5 @@ B17|2026-10-08|Separator confidence required a technical cue for embedded word-o
 B18|2026-10-08|Cleanup prompt preserved abandoned prepositions; word-retention guard rejected deletion in short or numeric phrases, and unchanged model output had no restart repair|V34
 B19|2026-10-14|Question protections omitted explanatory que clauses; broad word-retention threshold allowed single haber conjugation changes, turning correct ASR statements into questions with changed person or mood|V35,V36
 B20|2026-10-21|Code repair accepted only single spoken digits and missed ticket cues; mixed cardinal chunks reached LLM, lost a zero, and failed safety comparison; generic identifier casing lowercased acronym prefixes|V37
+B21|2026-10-29|New worker test used invalid grouped context-manager syntax; corrected mechanical typo, no new behavior invariant needed|V40
+B22|2026-10-29|Cleanup stop treated unreaped zombie PID as live and waited 20 seconds during shared-GPU handoff; inherited hub cache alias also overrode the Parakeet cache path|V40,V41

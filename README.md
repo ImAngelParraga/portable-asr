@@ -173,6 +173,34 @@ The local LLM runtime is optional. For transcription-only use, set:
 ASR_POSTPROCESS_ENABLED=0
 ```
 
+## Optional Parakeet Ultra
+
+Select `parakeet-ultra` to use `moondream/parakeet-ultra` through the local Photon runtime. It is disabled by default and does not change Whisper or Qwen selection. Both OpenVoiceIME and OpenVoiceDesktop can discover it through the server model list; refresh that list and select it explicitly in the app you want to test.
+
+Use a separate Python environment with `moondream==2.6.1` and a CUDA-compatible PyTorch build. Photon requires an NVIDIA Ampere or newer GPU; Pascal cards cannot run this engine. Install `ffmpeg` on the host for WAV/AAC/M4A decoding. Keep the runtime and writable model cache inside paths accessible to your service's systemd sandbox.
+
+```bash
+python3 -m venv /opt/portable-asr/parakeet-venv
+/opt/portable-asr/parakeet-venv/bin/pip install 'moondream==2.6.1'
+```
+
+```env
+ASR_PARAKEET_ENABLED=1
+ASR_PARAKEET_MODEL_ID=parakeet-ultra
+ASR_PARAKEET_CHECKPOINT=moondream/parakeet-ultra
+ASR_PARAKEET_PYTHON=/opt/portable-asr/parakeet-venv/bin/python
+ASR_PARAKEET_CUDA_VISIBLE_DEVICES=0
+ASR_PARAKEET_CACHE_DIR=/opt/portable-asr/parakeet-cache
+ASR_PARAKEET_KEEP_WARM=0
+ASR_PARAKEET_STOP_LLM_FOR_TRANSCRIPTION=1
+```
+
+Prefer a GPU UUID for `ASR_PARAKEET_CUDA_VISIBLE_DEVICES` when multiple GPUs have different capabilities. The worker removes Whisper's `LD_LIBRARY_PATH` so PyTorch resolves its own libraries. It starts only when selected. First use may download weights; pre-download them into the configured cache before serving requests.
+
+The example releases the worker and CUDA memory after every request, before normal transcript cleanup. With `ASR_PARAKEET_STOP_LLM_FOR_TRANSCRIPTION=1`, local cleanup is stopped before Parakeet inference and starts again when cleanup is needed. This allows both models to share limited VRAM, but adds model loading time to each dictation. Set `ASR_PARAKEET_KEEP_WARM=1` only when Parakeet and cleanup have enough independent GPU memory; leave the stop setting at `0` if they do not need to share memory.
+
+Parakeet detects language automatically. The service accepts existing client `language`, `prompt`, and `temperature` fields for compatibility, but Parakeet does not use them for forced language, vocabulary biasing, or sampling. Authentication, optional cleanup, request timing, and diagnostic history behave like the other engines. Worker logs and failures exclude transcript contents.
+
 ## CPU Mode
 
 CPU mode is the most portable setup:
