@@ -79,6 +79,7 @@ ASR_POSTPROCESS_ENABLED = os.environ.get("ASR_POSTPROCESS_ENABLED", "0") == "1"
 ASR_POSTPROCESS_PROVIDER = os.environ.get("ASR_POSTPROCESS_PROVIDER", "local-llama").strip()
 ASR_POSTPROCESS_BASE_URL = os.environ.get("ASR_POSTPROCESS_BASE_URL", "http://127.0.0.1:9100/v1").rstrip("/")
 ASR_POSTPROCESS_MODEL = os.environ.get("ASR_POSTPROCESS_MODEL", "example-cleanup-model")
+ASR_POSTPROCESS_PROMPT_FILE = os.environ.get("ASR_POSTPROCESS_PROMPT_FILE", "").strip()
 ASR_POSTPROCESS_TIMEOUT = int(os.environ.get("ASR_POSTPROCESS_TIMEOUT", "180"))
 ASR_POSTPROCESS_REPEAT_PENALTY = float(os.environ.get("ASR_POSTPROCESS_REPEAT_PENALTY", "1.18"))
 ASR_POSTPROCESS_VALIDATE_EDITS = os.environ.get("ASR_POSTPROCESS_VALIDATE_EDITS", "0") == "1"
@@ -317,7 +318,7 @@ Core rules:
 4. Remove filler sounds only when they are clearly non-meaningful speech noises:
    - um, uh, eh, mmm
    Remove only clearly abandoned local preposition starts when the speaker immediately restarts the same phrase, retaining the final preposition and all following content:
-   - Quiero ir a, al rocódromo de allí -> Quiero ir al rocódromo de allí
+   - Quiero ir a, al edificio de allí -> Quiero ir al edificio de allí
    - You can see that on, in this file -> You can see that in this file
    - Voy a, a casa -> Voy a casa
    A comma, ellipsis, or pause dash between adjacent prepositions may mark a restart. Preserve prepared restart repairs.
@@ -460,8 +461,8 @@ Clean: Si yo tuviera tiempo, lo haría mañana, pero ahora no puedo.
 Raw: Los mensajes son cortitos y quiero dejarlos cortitos
 Clean: Los mensajes son cortitos y quiero dejarlos cortitos.
 
-Raw: Ramón me dicho que no le gusta tu actitud
-Clean: Ramón me ha dicho que no le gusta tu actitud.
+Raw: Pedro me dicho que no le gusta tu actitud
+Clean: Pedro me ha dicho que no le gusta tu actitud.
 
 Raw: Ya tienes razón
 Clean: Ya, tienes razón.
@@ -510,17 +511,31 @@ Clean: Estoy probando esto. Jajaja.
 
 Ahora cambio de tema y hablo del trabajo.
 
-Raw: Estoy revisando la GPU y el servidor. Ahora cambio completamente de tema y hablo del partido de Brasil contra Japón.
+Raw: Estoy revisando la GPU y el servidor. Ahora cambio completamente de tema y hablo de la documentación.
 Clean: Estoy revisando la GPU y el servidor.
 
-Ahora cambio completamente de tema y hablo del partido de Brasil contra Japón.
+Ahora cambio completamente de tema y hablo de la documentación.
 
-Raw: Estoy probando el sistema y mi mujer se ríe de mí. Pregunta tú crees que soy tonto. Dicho esto estoy viendo Brasil contra Japón. Ah por cierto llamé a mi mejor amigo.
-Clean: Estoy probando el sistema y mi mujer se ríe de mí. ¿Tú crees que soy tonto?
+Raw: Estoy probando el sistema y el equipo revisa el documento. Pregunta puedes revisar el resultado. Dicho esto reviso la documentación. Ah por cierto revisé el documento.
+Clean: Estoy probando el sistema y el equipo revisa el documento. ¿Puedes revisar el resultado?
 
-Dicho esto, estoy viendo Brasil contra Japón.
+Dicho esto, reviso la documentación.
 
-Ah, por cierto, llamé a mi mejor amigo."""
+Ah, por cierto, revisé el documento."""
+
+def _load_postprocess_prompt(default_prompt: str) -> str:
+    if not ASR_POSTPROCESS_PROMPT_FILE:
+        return default_prompt
+    try:
+        prompt = Path(ASR_POSTPROCESS_PROMPT_FILE).read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
+        raise ValueError("ASR_POSTPROCESS_PROMPT_FILE must be a readable UTF-8 file") from None
+    if not prompt:
+        raise ValueError("ASR_POSTPROCESS_PROMPT_FILE must not be empty")
+    return prompt
+
+
+DEFAULT_POSTPROCESS_PROMPT = _load_postprocess_prompt(DEFAULT_POSTPROCESS_PROMPT)
 
 # ---- Helpers ----
 

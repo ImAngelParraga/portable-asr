@@ -34,7 +34,7 @@ class CleanupEditValidationTest(unittest.TestCase):
 
     def test_v48_allows_audited_spelling_and_missing_function_words(self):
         pairs = [
-            ("ramon me dicho que no le gusta tu actitud", "Ramón me ha dicho que no le gusta tu actitud."),
+            ("pedro me dicho que no le gusta tu actitud", "Pedro me ha dicho que no le gusta tu actitud."),
             ("Voy hablar con Ana después de la reunión.", "Voy a hablar con Ana después de la reunión."),
             ("La respuesta del serividor tarda mucho cuando hay varias conexiones.",
              "La respuesta del servidor tarda mucho cuando hay varias conexiones."),

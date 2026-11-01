@@ -17,13 +17,13 @@ class SpeechRestartTest(unittest.TestCase):
 
     def test_v34_corrected_prepositions_survive_full_cleanup(self):
         cases = (
-            ("Quiero ir a, al rocódromo de allí", "Quiero ir al rocódromo de allí"),
-            ("Quiero ir a... al rocódromo de allí", "Quiero ir al rocódromo de allí"),
+            ("Quiero ir a, al edificio de allí", "Quiero ir al edificio de allí"),
+            ("Quiero ir a... al edificio de allí", "Quiero ir al edificio de allí"),
             ("You can see that on, in this file", "You can see that in this file"),
             ("You can see that on… in this file", "You can see that in this file"),
             ("You can see that in — on this page", "You can see that on this page"),
-            ("Voy a, al rocódromo a las 5", "Voy al rocódromo a las 5"),
-            ("Vengo de, del rocódromo", "Vengo del rocódromo"),
+            ("Voy a, al edificio a las 5", "Voy al edificio a las 5"),
+            ("Vengo de, del edificio", "Vengo del edificio"),
             ("Voy a, a casa", "Voy a casa"),
             ("Put it in, in this file", "Put it in this file"),
         )
@@ -44,8 +44,8 @@ class SpeechRestartTest(unittest.TestCase):
             "Use `on, in` here",
             "Use 'on, in this file' here",
             "You can see that on this page, in this file",
-            "Quiero ir a Madrid, al rocódromo de allí",
-            "Quiero ir a al rocódromo de allí",
+            "Quiero ir a Madrid, al edificio de allí",
+            "Quiero ir a al edificio de allí",
             "No, no quiero ir",
             "Muy, muy bien",
             "Quiero ir mañana, no, el viernes",
@@ -60,7 +60,7 @@ class SpeechRestartTest(unittest.TestCase):
                          "- on\n- in")
 
     def test_v34_disabled_and_unavailable_cleanup_returns_raw(self):
-        raw = "Voy a, al rocódromo"
+        raw = "Voy a, al edificio"
         with patch.object(asr_server, "ASR_POSTPROCESS_ENABLED", False):
             self.assertEqual(asr_server._postprocess_transcript(raw), raw)
         with (
@@ -72,6 +72,6 @@ class SpeechRestartTest(unittest.TestCase):
                 asr_server._postprocess_transcript(raw, fail_closed=True)
 
     def test_v34_other_content_changes_are_rejected(self):
-        raw = "Voy a, al rocódromo a las 5"
-        self.assertEqual(self.cleanup(raw, "Voy al rocódromo a las 6.")[0],
-                         "Voy al rocódromo a las 5")
+        raw = "Voy a, al edificio a las 5"
+        self.assertEqual(self.cleanup(raw, "Voy al edificio a las 6.")[0],
+                         "Voy al edificio a las 5")

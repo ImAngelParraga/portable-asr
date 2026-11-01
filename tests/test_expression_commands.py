@@ -64,18 +64,18 @@ class ExpressionCommandTest(unittest.TestCase):
     def test_missing_auxiliary_insertion_preserves_order(self):
         self.assertEqual(
             _protect_meaningful_order_rewrite(
-                "Ramón me dicho que no le gusta tu actitud",
-                "Ramón me ha dicho que no le gusta tu actitud.",
+                "Pedro me dicho que no le gusta tu actitud",
+                "Pedro me ha dicho que no le gusta tu actitud.",
             ),
-            "Ramón me ha dicho que no le gusta tu actitud.",
+            "Pedro me ha dicho que no le gusta tu actitud.",
         )
 
     def test_broad_rewrite_with_changed_attribution_is_rejected(self):
-        raw = "Ramón me dicho que no le gusta tu actitud"
+        raw = "Pedro me dicho que no le gusta tu actitud"
         self.assertEqual(
             _protect_meaningful_order_rewrite(
                 raw,
-                "Me han dicho Ramón que no te gusta la actitud tuya.",
+                "Me han dicho Pedro que no te gusta la actitud tuya.",
             ),
             raw,
         )
@@ -83,10 +83,10 @@ class ExpressionCommandTest(unittest.TestCase):
     def test_spanish_pronoun_rewrite_is_rejected(self):
         self.assertEqual(
             _protect_spanish_pronoun_rewrite(
-                "Ramón me dicho que no le gusta tu actitud",
-                "Ramón me ha dicho que no te gusta tu actitud.",
+                "Pedro me dicho que no le gusta tu actitud",
+                "Pedro me ha dicho que no te gusta tu actitud.",
             ),
-            "Ramón me ha dicho que no le gusta tu actitud.",
+            "Pedro me ha dicho que no le gusta tu actitud.",
         )
 
     def test_spanish_discourse_marker_rewrite_is_restored(self):

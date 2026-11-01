@@ -50,22 +50,22 @@ class PostprocessFailureTest(unittest.TestCase):
             patch.object(
                 asr_server,
                 "_llm_chat",
-                return_value=self._chat_result("Ramón me ha dicho que no le gusta tu actitud."),
+                return_value=self._chat_result("Pedro me ha dicho que no le gusta tu actitud."),
             ),
         ):
             self.assertEqual(
-                _postprocess_transcript("Ramón me dicho que no le gusta tu actitud"),
-                "Ramón me ha dicho que no le gusta tu actitud.",
+                _postprocess_transcript("Pedro me dicho que no le gusta tu actitud"),
+                "Pedro me ha dicho que no le gusta tu actitud.",
             )
 
     def test_broad_attribution_rewrite_fails_open_to_raw_text(self):
-        raw = "Ramón me dicho que no le gusta tu actitud"
+        raw = "Pedro me dicho que no le gusta tu actitud"
         with (
             patch.object(asr_server, "ASR_POSTPROCESS_ENABLED", True),
             patch.object(
                 asr_server,
                 "_llm_chat",
-                return_value=self._chat_result("Me han dicho Ramón que no te gusta la actitud tuya."),
+                return_value=self._chat_result("Me han dicho Pedro que no te gusta la actitud tuya."),
             ),
         ):
             self.assertEqual(_postprocess_transcript(raw), raw)
@@ -76,12 +76,12 @@ class PostprocessFailureTest(unittest.TestCase):
             patch.object(
                 asr_server,
                 "_llm_chat",
-                return_value=self._chat_result("Ramón me ha dicho que no te gusta tu actitud."),
+                return_value=self._chat_result("Pedro me ha dicho que no te gusta tu actitud."),
             ),
         ):
             self.assertEqual(
-                _postprocess_transcript("Ramón me dicho que no le gusta tu actitud"),
-                "Ramón me ha dicho que no le gusta tu actitud.",
+                _postprocess_transcript("Pedro me dicho que no le gusta tu actitud"),
+                "Pedro me ha dicho que no le gusta tu actitud.",
             )
 
     def test_discourse_marker_rewrite_restores_raw_marker(self):

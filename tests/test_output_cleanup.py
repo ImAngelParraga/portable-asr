@@ -40,8 +40,8 @@ class OutputCleanupTest(unittest.TestCase):
 
     def test_adds_paragraph_before_por_cierto(self):
         self.assertEqual(
-            _apply_explicit_paragraph_breaks("¡Vamos, Japón! Ah, por cierto: llamé a mi mejor amigo."),
-            "¡Vamos, Japón!\n\nAh, por cierto: llamé a mi mejor amigo.",
+            _apply_explicit_paragraph_breaks("¡Todo listo! Ah, por cierto: revisé el documento."),
+            "¡Todo listo!\n\nAh, por cierto: revisé el documento.",
         )
 
     def test_reconstructs_guion_bajo_inside_technical_literal(self):

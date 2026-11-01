@@ -34,3 +34,5 @@ bin/llama-cli
 .ruff_cache/
 *.gguf
 *.safetensors
+
+.model-cache/

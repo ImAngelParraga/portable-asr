@@ -20,7 +20,7 @@ C8: Existing model names continue to select Whisper; Qwen3-ASR runs only when ex
 I.transcribe: `POST /v1/audio/transcriptions` accepts multipart audio, `model`, `temperature`, optional `language`, optional bounded `prompt`; returns final text after configured service processing.
 I.translate: Add explicit translation API contract before enabling client controls: OpenAI-compatible `POST /v1/audio/translations` for English, with separately documented/versioned extension if arbitrary target languages are supported.
 I.postprocess: `POST /v1/text/postprocess` and `POST /v1/chat/completions` expose service cleanup directly; audio endpoint may invoke same internal pipeline.
-I.config: `ASR_POSTPROCESS_*` owns provider/model/token/timeout/prompt/failure policy; clients never receive these secrets.
+I.config: Optional `ASR_POSTPROCESS_PROMPT_FILE` loads UTF-8 cleanup instructions at startup; per-request instruction takes precedence, unset retains built-in instructions. `ASR_POSTPROCESS_*` owns provider/model/token/timeout/prompt/failure policy; clients never receive these secrets.
 I.models: `model=qwen3-asr-1.7b` selects resident Qwen3-ASR when `ASR_QWEN_ENABLED=1`; all other legacy model values select Whisper. `ASR_QWEN_*` configures checkpoint, interpreter, and GPU placement.
 I.catalog: Authenticated `GET /v1/audio/models` lists transcription model IDs in OpenAI list format; `GET /v1/models` keeps its broader compatibility catalog.
 I.history: Optional `ASR_AUDIO_HISTORY_*` settings enable local diagnostic records; successful archived audio responses add `request_id`, failed archived requests return `X-Request-ID`. No HTTP archive access.
@@ -86,6 +86,10 @@ V47: Local cleanup startup forwards opt-in `ASR_LLM_SPEC_TYPE` to llama-server; 
 V48: Opt-in cleanup edit validation deterministically rejects changed known Spanish conjugations sharing a lemma, lost valid verb accents and altered negation sequences. Bundled attributed conjugation data loads once without GPU/network; missing data retains prepared source. Other changed content receives one bounded same-model A/B audit; reject, invalid verdict or audit failure retains prepared source before question repair. Case/punctuation and equivalent numeric formatting skip audit; safe spelling/function-word repairs remain eligible. Local audits constrain output grammar and log no text.
 
 V49: GPU watcher reserves cleanup only for matching external NVIDIA compute contexts on configured cleanup-visible GPUs; CPU-only FFmpeg and activity on other GPUs never evict or block cleanup. No fixed cooldown after GPU activity ends. Unwatched GPU jobs coexist without startup veto; service descendants stay exempt.
+
+V50: Public-data scanner uses generic host/path/credential patterns, reports locations without matched values, and fails when Git file enumeration fails; empty repositories and sanitized placeholders pass.
+
+V51: Configured cleanup prompt loads once at startup; missing, unreadable, invalid UTF-8 or blank files fail clearly without logging contents. Unset keeps built-in instructions; per-request overrides and deterministic formatting/safety checks remain intact. Installer ships the generic template without overwriting separately named custom prompts.
 
 §T
 id|status|task|detail|cites
@@ -155,3 +159,5 @@ B25|2026-10-29|Word-retention threshold accepted small tense/person substitution
 B26|2026-10-29|One-token audit accepted a present-to-conditional substitution and removed repeated negation; model judgment alone cannot enforce conjugation/negation invariants|V48
 B27|2026-10-29|Pinned conjugation data omitted common lemmas including tener and escribir; regression coverage required supplemental paradigms|V48
 B28|2026-11-01|Process-name watcher evicted cleanup for unrelated CPU FFmpeg and transcoding on another GPU, then imposed a ten-second reservation|V49
+
+B29|2026-11-01|Scanner leaked private host names in its denylist and returned success when process-substitution Git enumeration failed outside a repository|V50

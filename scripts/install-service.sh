@@ -29,6 +29,9 @@ install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/data/s
 install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/data/README.md" "${ASR_DIR}/data/README.md"
 install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/data/spanish-verbs-extra.json" "${ASR_DIR}/data/spanish-verbs-extra.json"
 
+install -d -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${ASR_DIR}/config"
+install -m 644 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/config/cleanup-prompt.txt" "${ASR_DIR}/config/cleanup-prompt.txt"
+
 if [ ! -f "${ASR_ENV_PATH}" ]; then
     install -m 600 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${ASR_ENV_SOURCE}" "${ASR_ENV_PATH}"
 fi
