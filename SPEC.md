@@ -79,11 +79,13 @@ V41: Cleanup shutdown reaps owned children and treats Linux zombie PIDs as exite
 V42: C++ Parakeet uses configured local library/GGUF, owns one reusable C-API context, frees returned strings on decode success/failure, and frees context on close. Its worker sees only its runtime library directory, never Whisper's libraries; Photon remains the default backend.
 V43: Single-resident mode unloads only unselected ASR engines before inference, retains the selected warm worker through cleanup and repeated requests, serializes switches against in-flight inference, and preserves legacy independent-worker behavior when disabled. Same auth/catalog/history/cleanup contracts apply to C++ Parakeet.
 
-V44: GPU process watcher excludes the service and its descendant workers/CPU audio decoders by parent ancestry; unrelated matching executables remain watched. Missing/malformed/racing process metadata never crashes the watcher.
+V44: GPU process watcher excludes the service and its descendant workers/CPU audio decoders by parent ancestry; external matching GPU processes remain watched on cleanup-visible devices (V49). Missing/malformed/racing process metadata never crashes the watcher.
 V45: Concurrency admission awaits available capacity without periodic polling, retains configured limits and sanitized 503 timeout behavior, and cancellation/timeouts never consume or leak slots. Initialize capacity per application lifespan/event loop.
 V46: Cleanup requests use configured `ASR_POSTPROCESS_REPEAT_PENALTY` (legacy default 1.18) with neutral presence/frequency penalties; general chat retains its existing repetition policy. Cache, thinking and failure contracts remain intact.
 V47: Local cleanup startup forwards opt-in `ASR_LLM_SPEC_TYPE` to llama-server; default none omits the flag for legacy-runtime compatibility. Copy speculation uses the existing model and preserves configured GPU placement.
 V48: Opt-in cleanup edit validation deterministically rejects changed known Spanish conjugations sharing a lemma, lost valid verb accents and altered negation sequences. Bundled attributed conjugation data loads once without GPU/network; missing data retains prepared source. Other changed content receives one bounded same-model A/B audit; reject, invalid verdict or audit failure retains prepared source before question repair. Case/punctuation and equivalent numeric formatting skip audit; safe spelling/function-word repairs remain eligible. Local audits constrain output grammar and log no text.
+
+V49: GPU watcher reserves cleanup only for matching external NVIDIA compute contexts on configured cleanup-visible GPUs; CPU-only FFmpeg and activity on other GPUs never evict or block cleanup. No fixed cooldown after GPU activity ends. Unwatched GPU jobs coexist without startup veto; service descendants stay exempt.
 
 §T
 id|status|task|detail|cites
@@ -121,6 +123,8 @@ T24|x|Configure cleanup repetition penalty|Expose cleanup-only repetition settin
 T25|x|Enable optional copy speculation|Expose local llama-server speculative type, preserve legacy default, deploy measured ngram-mod profile and verify live output parity plus ASR/cleanup residency.|I.config,I.postprocess,V43,V47
 T26|x|Validate meaning-changing cleanup edits|Keep existing protections; audit changed wording and potentially meaningful accents with resident model, preserve failure fallback and formatting, test tense/person regressions and legitimate corrections, measure and deploy.|I.config,I.postprocess,C3,C7,V9,V48
 
+T27|x|Scope GPU reservations to real shared-device users|Ignore CPU-only FFmpeg; scope NVIDIA queries to cleanup-visible devices; preserve hardware transcoding on separate GPU and remove fixed cooldown; verify offline and live media-server encode with warm cleanup.|I.config,I.residency,V44,V49
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -150,3 +154,4 @@ B24|2026-10-29|Concurrency admission polled a threading semaphore every 250 ms, 
 B25|2026-10-29|Word-retention threshold accepted small tense/person substitutions in otherwise preserved prose; conjugation protection covered only haber|V48
 B26|2026-10-29|One-token audit accepted a present-to-conditional substitution and removed repeated negation; model judgment alone cannot enforce conjugation/negation invariants|V48
 B27|2026-10-29|Pinned conjugation data omitted common lemmas including tener and escribir; regression coverage required supplemental paradigms|V48
+B28|2026-11-01|Process-name watcher evicted cleanup for unrelated CPU FFmpeg and transcoding on another GPU, then imposed a ten-second reservation|V49

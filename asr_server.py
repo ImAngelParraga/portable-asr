@@ -123,7 +123,6 @@ _concurrency_semaphore = asyncio.Semaphore(ASR_MAX_CONCURRENCY)
 _llm_lock = threading.RLock()
 _llm_process = None
 _llm_last_used = 0.0
-_llm_block_until = 0.0
 _whisper_worker_lock = threading.RLock()
 _whisper_worker_process = None
 _qwen_worker_lock = threading.RLock()
@@ -611,13 +610,16 @@ def _llm_server_processes() -> set[int]:
     return current
 
 def _gpu_compute_apps() -> list[tuple[int, str, str]]:
+    command = [
+        "nvidia-smi",
+        "--query-compute-apps=pid,process_name,used_memory",
+        "--format=csv,noheader",
+    ]
+    if ASR_LLM_CUDA_VISIBLE_DEVICES:
+        command.append(f"--id={ASR_LLM_CUDA_VISIBLE_DEVICES}")
     try:
         output = subprocess.check_output(
-            [
-                "nvidia-smi",
-                "--query-compute-apps=pid,process_name,used_memory",
-                "--format=csv,noheader",
-            ],
+            command,
             text=True,
             stderr=subprocess.DEVNULL,
             timeout=5,
@@ -652,7 +654,7 @@ def _external_gpu_users() -> list[tuple[int, str, str]]:
             parakeet_pid = _parakeet_worker_process.pid
     external = []
     for pid, name, memory in _gpu_compute_apps():
-        if pid in llama_pids or pid in (own_pid, whisper_pid, qwen_pid, parakeet_pid):
+        if pid in llama_pids or pid in (own_pid, whisper_pid, qwen_pid, parakeet_pid) or _is_service_process(pid):
             continue
         external.append((pid, name, memory))
     return external
@@ -676,35 +678,11 @@ def _is_service_process(pid: int) -> bool:
 def _watched_gpu_processes() -> list[tuple[int, str]]:
     if not ASR_GPU_WATCH_PROCESS_PATTERNS:
         return []
-    try:
-        output = subprocess.check_output(["pgrep", "-af", "."], text=True)
-    except subprocess.CalledProcessError:
-        return []
-    except OSError:
-        return []
-    current_pid = os.getpid()
-    matches = []
-    for line in output.splitlines():
-        parts = line.strip().split(" ", 1)
-        if len(parts) != 2:
-            continue
-        try:
-            pid = int(parts[0])
-        except ValueError:
-            continue
-        cmdline = parts[1]
-        if pid == current_pid or "pgrep -af" in cmdline:
-            continue
-        executable = cmdline.split(" ", 1)[0].lower()
-        executable_name = Path(executable).name.lower()
-        if any(
-            pattern in executable_name or pattern in executable
-            for pattern in ASR_GPU_WATCH_PROCESS_PATTERNS
-        ):
-            if _is_service_process(pid):
-                continue
-            matches.append((pid, cmdline))
-    return matches
+    return [
+        (pid, name)
+        for pid, name, _memory in _external_gpu_users()
+        if any(pattern in Path(name.lower()).name for pattern in ASR_GPU_WATCH_PROCESS_PATTERNS)
+    ]
 
 def _llm_health() -> bool:
     try:
@@ -751,14 +729,10 @@ def _start_llm_server():
         if _llm_health():
             return
         if _gpu_watch_enabled():
-            external = _external_gpu_users()
             watched = _watched_gpu_processes()
             if watched:
                 names = ", ".join(f"{pid}:{cmd[:80]}" for pid, cmd in watched)
                 raise RuntimeError(f"GPU reserved for watched process: {names}")
-            if external:
-                names = ", ".join(f"{pid}:{name}:{memory}" for pid, name, memory in external)
-                raise RuntimeError(f"GPU busy with external process: {names}")
         env = os.environ.copy()
         env["HF_HOME"] = ASR_POSTPROCESS_CACHE_DIR
         env["HUGGINGFACE_HUB_CACHE"] = f"{ASR_POSTPROCESS_CACHE_DIR}/hub"
@@ -818,9 +792,6 @@ def _ensure_llm_server():
     deadline = time.monotonic() + ASR_LLM_BUSY_WAIT_TIMEOUT
     last_error: Exception | None = None
     while time.monotonic() < deadline:
-        if time.monotonic() < _llm_block_until:
-            time.sleep(1)
-            continue
         for attempt in range(ASR_LLM_START_RETRIES + 1):
             try:
                 _start_llm_server()
@@ -907,33 +878,23 @@ def _log_llm_postprocess_timing(result: dict, raw_text: str, corrected_text: str
         + " ".join(f"{key}={value}" for key, value in fields.items() if value is not None)
     )
 
+def _llm_watcher_tick():
+    watched = _watched_gpu_processes()
+    if watched and _llm_server_processes():
+        _stop_llm_server("watched GPU process activity")
+    if (
+        ASR_LLM_IDLE_TIMEOUT > 0
+        and _llm_last_used
+        and _llm_server_processes()
+        and time.monotonic() - _llm_last_used > ASR_LLM_IDLE_TIMEOUT
+    ):
+        _stop_llm_server(f"idle for {ASR_LLM_IDLE_TIMEOUT}s")
+
 def _llm_watcher_loop():
-    global _llm_block_until
     while True:
         try:
-            if not _gpu_watch_enabled():
-                time.sleep(max(1, ASR_LLM_WATCH_INTERVAL))
-                continue
-            external = _external_gpu_users()
-            watched = _watched_gpu_processes()
-            watched_external = [
-                item for item in external
-                if any(
-                    pattern in Path(item[1].lower()).name or pattern in item[1].lower()
-                    for pattern in ASR_GPU_WATCH_PROCESS_PATTERNS
-                )
-            ]
-            if watched or watched_external:
-                _llm_block_until = time.monotonic() + max(ASR_LLM_WATCH_INTERVAL * 2, 10)
-                if _llm_server_processes():
-                    _stop_llm_server("watched GPU process activity")
-            if (
-                ASR_LLM_IDLE_TIMEOUT > 0
-                and _llm_last_used
-                and _llm_server_processes()
-                and time.monotonic() - _llm_last_used > ASR_LLM_IDLE_TIMEOUT
-            ):
-                _stop_llm_server(f"idle for {ASR_LLM_IDLE_TIMEOUT}s")
+            if _gpu_watch_enabled():
+                _llm_watcher_tick()
         except Exception as exc:
             print(f"[llm] watcher error: {exc}")
         time.sleep(max(1, ASR_LLM_WATCH_INTERVAL))

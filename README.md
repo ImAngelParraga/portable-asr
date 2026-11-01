@@ -341,3 +341,7 @@ git status --short
 ```
 
 Host-specific operations belong in a private companion repository. See `docs/private-companion.md`.
+
+### GPU sharing with media transcoding
+
+With `ASR_GPU_WATCH_ENABLED=1`, cleanup yields only to external NVIDIA compute processes whose executable name matches `ASR_GPU_WATCH_PROCESS_PATTERNS` (default `ffmpeg`). CPU-only FFmpeg jobs do not unload or block cleanup. Set `ASR_LLM_CUDA_VISIBLE_DEVICES` to physical GPU UUIDs to limit arbitration to the cleanup GPU(s); without it, all NVIDIA GPUs are considered. Media-server NVENC on a separate GPU can coexist with warm cleanup. Matching transcoding on the cleanup GPU pauses cleanup until its GPU context exits; there is no additional fixed cooldown. Other GPU processes do not force eviction or veto startup. NVIDIA telemetry failure leaves cleanup running.

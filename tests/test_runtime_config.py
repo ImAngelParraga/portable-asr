@@ -141,23 +141,6 @@ class RuntimeConfigTest(unittest.TestCase):
         self.assertTrue(payload["cache_prompt"])
         self.assertEqual(request.call_args.kwargs["timeout"], 2)
 
-    def test_v16_gpu_watcher_matches_executable_not_arguments(self):
-        output = "\n".join(
-            [
-                "100 /usr/bin/media-server --ffmpeg=/usr/lib/media-ffmpeg/ffmpeg",
-                "101 /usr/lib/media-ffmpeg/ffmpeg -hwaccel cuda input.mkv",
-            ]
-        )
-        with (
-            patch.object(asr_server, "ASR_GPU_WATCH_PROCESS_PATTERNS", ["ffmpeg"]),
-            patch.object(asr_server.os, "getpid", return_value=999),
-            patch.object(asr_server.subprocess, "check_output", return_value=output),
-        ):
-            self.assertEqual(
-                asr_server._watched_gpu_processes(),
-                [(101, "/usr/lib/media-ffmpeg/ffmpeg -hwaccel cuda input.mkv")],
-            )
-
     def test_cpu_float16_config_warns(self):
         with (
             patch.object(asr_server, "ASR_DEVICE", "cpu"),

@@ -1,27 +1,85 @@
 import asyncio
 from pathlib import Path
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, mock_open, patch
 
 import asr_server as server
 
 
 class OwnedDecoderTest(unittest.TestCase):
-    def test_v44_ignores_decoder_descendant_but_keeps_external_job(self):
-        parents = {201: 200, 200: 999, 301: 300, 300: 1}
-
-        def stat(path, *args, **kwargs):
-            pid = int(path.parent.name)
-            return f"{pid} (process with spaces) S {parents[pid]} 0 0"
-
-        output = "201 ffmpeg -i input.m4a -ar 16000 audio.wav\n301 ffmpeg -hwaccel cuda movie.mkv\n"
+    def test_v49_cpu_ffmpeg_does_not_reserve_cleanup_gpu(self):
         with (
-            patch.object(server.os, "getpid", return_value=999),
-            patch.object(Path, "read_text", stat),
-            patch.object(server.subprocess, "check_output", return_value=output),
+            patch.object(server, "_external_gpu_users", return_value=[]),
+            patch.object(server.subprocess, "check_output", return_value="301 ffmpeg -i input.wav output.wav\n"),
+            patch.object(server, "_is_service_process", return_value=False),
+        ):
+            self.assertEqual(server._watched_gpu_processes(), [])
+
+    def test_v49_only_matching_actual_gpu_executable_is_watched(self):
+        processes = [(301, "/usr/lib/jellyfin-ffmpeg/ffmpeg", "141 MiB"),
+                     (302, "/usr/bin/other", "200 MiB")]
+        with (
+            patch.object(server, "_external_gpu_users", return_value=processes),
             patch.object(server, "ASR_GPU_WATCH_PROCESS_PATTERNS", ["ffmpeg"]),
         ):
-            self.assertEqual(server._watched_gpu_processes(), [(301, "ffmpeg -hwaccel cuda movie.mkv")])
+            self.assertEqual(server._watched_gpu_processes(), [(301, processes[0][1])])
+
+    def test_v49_gpu_query_scoped_to_cleanup_visible_devices(self):
+        with (
+            patch.object(server, "ASR_LLM_CUDA_VISIBLE_DEVICES", "GPU-cleanup"),
+            patch.object(server.subprocess, "check_output", return_value="301, ffmpeg, 141 MiB\n") as query,
+        ):
+            self.assertEqual(server._gpu_compute_apps(), [(301, "ffmpeg", "141 MiB")])
+        self.assertIn("--id=GPU-cleanup", query.call_args.args[0])
+
+    def test_v49_gpu_query_failure_does_not_reserve_devices(self):
+        with patch.object(server.subprocess, "check_output", side_effect=server.subprocess.TimeoutExpired("nvidia-smi", 5)):
+            self.assertEqual(server._gpu_compute_apps(), [])
+
+    def test_v49_watcher_only_stops_for_actual_shared_gpu_transcode(self):
+        for watched in ([], [(301, "ffmpeg")]):
+            with (
+                self.subTest(watched=watched),
+                patch.object(server, "_watched_gpu_processes", return_value=watched),
+                patch.object(server, "_llm_server_processes", return_value={456}),
+                patch.object(server, "ASR_LLM_IDLE_TIMEOUT", 0),
+                patch.object(server, "_stop_llm_server") as stop,
+            ):
+                server._llm_watcher_tick()
+                self.assertEqual(stop.call_count, bool(watched))
+
+    def test_v49_startup_blocks_only_actual_watched_gpu_users(self):
+        with (
+            patch.object(server, "_llm_health", return_value=False),
+            patch.object(server, "_gpu_watch_enabled", return_value=True),
+            patch.object(server, "_watched_gpu_processes", return_value=[(301, "ffmpeg")]),
+            patch.object(server.subprocess, "Popen") as spawn,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "GPU reserved"):
+                server._start_llm_server()
+            spawn.assert_not_called()
+
+    def test_v49_unwatched_gpu_job_does_not_veto_startup(self):
+        with (
+            patch.object(server, "_llm_process", None),
+            patch.object(server, "_llm_health", side_effect=[False, True]),
+            patch.object(server, "_gpu_watch_enabled", return_value=True),
+            patch.object(server, "_external_gpu_users", return_value=[(301, "other-gpu-job", "200 MiB")]),
+            patch.object(server, "ASR_GPU_WATCH_PROCESS_PATTERNS", ["ffmpeg"]),
+            patch.object(server, "open", mock_open(), create=True),
+            patch.object(server.Path, "write_text"),
+            patch.object(server.subprocess, "Popen", return_value=Mock(poll=Mock(return_value=None))) as spawn,
+        ):
+            server._start_llm_server()
+            spawn.assert_called_once()
+
+    def test_v49_gpu_descendants_remain_service_owned(self):
+        with (
+            patch.object(server, "_llm_server_processes", return_value=set()),
+            patch.object(server, "_gpu_compute_apps", return_value=[(301, "ffmpeg", "141 MiB"), (302, "ffmpeg", "141 MiB")]),
+            patch.object(server, "_is_service_process", side_effect=lambda pid: pid == 301),
+        ):
+            self.assertEqual(server._external_gpu_users(), [(302, "ffmpeg", "141 MiB")])
 
     def test_v44_process_races_malformed_stat_and_parent_cycle_are_safe(self):
         for value in [OSError("gone"), "malformed", "123 (bad) S invalid", "123 (loop) S 123"]:
