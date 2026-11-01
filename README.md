@@ -2,6 +2,18 @@
 
 Self-hosted speech-to-text service with an OpenAI-compatible API. Runs Whisper on CPU or NVIDIA CUDA, with optional transcript cleanup through a local or external LLM. Android and desktop clients receive the final transcript; they do not need their own cleanup configuration.
 
+## OpenVoice family
+
+Three projects for dictation across devices. Use them together for a self-hosted setup, or use each with other compatible clients and services.
+
+| Project | Role |
+| --- | --- |
+| [Portable ASR](https://github.com/ImAngelParraga/portable-asr) | Self-hosted transcription server with optional transcript cleanup |
+| [OpenVoiceIME](https://github.com/ImAngelParraga/OpenVoiceIME) | Android voice keyboard |
+| [OpenVoiceDesktop](https://github.com/ImAngelParraga/OpenVoiceDesktop) | Dictation client for Linux and Windows |
+
+[Explore the OpenVoice family](https://imangelparraga.github.io/OpenVoiceIME/#openvoice-family).
+
 ## Quickstart
 
 Start with CPU transcription and no cleanup. On Ubuntu/Debian, install Python 3.10+ and venv support (Python 3.12 is a useful starting point):
@@ -46,8 +58,7 @@ Replace the audio path with an existing recording. Health checks confirm the pro
 
 ## Connect a client
 
-- [OpenVoiceIME](https://github.com/ImAngelParraga/OpenVoiceIME): Android voice keyboard.
-- [OpenVoiceDesktop](https://github.com/ImAngelParraga/OpenVoiceDesktop): Linux GNOME Wayland and Windows dictation.
+Install either client from the OpenVoice family above.
 
 Use the server base URL, the same bearer token, and `whisper-1`. Refresh the client's model list for optional engines. Whisper's actual checkpoint is selected by `ASR_MODEL_SIZE` on the server. A short optional transcription `prompt` supplies vocabulary context, not cleanup instructions.
 
