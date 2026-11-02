@@ -2318,6 +2318,58 @@ _QUANTITY_SUFFIX_RE = re.compile(
 )
 _QUANTITY_PREFIX_RE = re.compile(r"(?P<unit>[€$])\s*(?P<amount>\d+(?:[.,]\d+)*)")
 
+_CLOCK_NUMBER_PATTERN = (
+    r"\d{1,2}|(?:cincuenta|cuarenta|treinta|veinte)(?:\s+y\s+"
+    r"(?:uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve))?|"
+    + "|".join(re.escape(word).replace("e", "[eé]").replace("i", "[ií]").replace("o", "[oó]")
+               for word in sorted(set(_SPANISH_UNITS) | {"una"}, key=len, reverse=True))
+)
+_CLOCK_TIME_RE = re.compile(
+    r"\b(?P<prefix>(?:(?:a|desde|hasta|sobre)\s+las?|son\s+las|es\s+la)\s+)"
+    rf"(?P<hour>{_CLOCK_NUMBER_PATTERN})\b"
+    rf"(?P<suffix>\s+(?:(?P<operation>y|menos)\s+"
+    rf"(?P<minute>media|cuarto|{_CLOCK_NUMBER_PATTERN})\b|en\s+punto\b))?",
+    re.IGNORECASE,
+)
+
+
+def _format_clock_times(text: str) -> str:
+    """Format explicit Spanish clock references without inferring AM or PM."""
+    def number(value: str) -> int | None:
+        value = _normalized_plain_text(value)
+        if value.isdigit():
+            return int(value)
+        tokens = ["uno" if token == "una" else token for token in value.split()]
+        parsed = _spoken_number_at(tokens, 0)
+        return int(parsed[0]) if parsed and parsed[1] == len(tokens) else None
+
+    def replace(match: re.Match) -> str:
+        tail = text[match.end():]
+        if not match.group("suffix") and match.group("hour").isdigit():
+            return match.group(0)
+        if re.match(r"\s*(?::|\b(?:horas?|veces)\b)", tail, re.IGNORECASE):
+            return match.group(0)
+        if not match.group("suffix") and re.match(r"\s+(?:y|menos)\b", tail, re.IGNORECASE):
+            return match.group(0)
+        hour = number(match.group("hour"))
+        minute_text = match.group("minute")
+        if minute_text and minute_text.lower() in {"media", "cuarto"}:
+            minute = {"media": 30, "cuarto": 15}[minute_text.lower()]
+        else:
+            minute = number(minute_text) if minute_text else 0
+        if hour is None or not 0 <= hour <= 23 or minute is None or not 0 <= minute <= 59:
+            return match.group(0)
+        if (match.group("operation") or "").lower() == "menos" and minute:
+            cycle = 12 if 1 <= hour <= 12 else 24
+            hour = (hour - 1) % cycle
+            if hour == 0 and cycle == 12:
+                hour = 12
+            minute = 60 - minute
+        return f"{match.group('prefix')}{hour}:{minute:02d}"
+
+    return _CLOCK_TIME_RE.sub(replace, text)
+
+
 def _format_quantity_symbols(text: str) -> str:
     """Format explicit amounts only, preserving currency and numeric precision."""
     def replace(match: re.Match) -> str:
@@ -2727,7 +2779,7 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
-    cleanup_source = _prepare_preposition_restarts(raw_text)
+    cleanup_source = _format_clock_times(_prepare_preposition_restarts(raw_text))
     prepared_text = _format_quantity_symbols(
         _repair_spoken_class_identifiers(cleanup_source, _prepare_spelled_words(cleanup_source))
     )
@@ -2787,7 +2839,7 @@ def _postprocess_transcript(
     corrected = _repair_technical_literal_format(cleanup_source, corrected)
     corrected = re.sub(r'([?.!,;:])\1{3,}', r'\1', corrected)
     corrected = re.sub(r'\s+([?.!,;:])', r'\1', corrected)
-    corrected = _format_quantity_symbols(corrected)
+    corrected = _format_clock_times(_format_quantity_symbols(corrected))
     corrected = _protect_formatted_list_rewrite(cleanup_source, prepared_text, corrected)
     corrected = _protect_spanish_diminutive_rewrite(cleanup_source, corrected)
     corrected = _protect_spanish_pronoun_rewrite(cleanup_source, corrected)

@@ -91,6 +91,8 @@ V50: Public-data scanner uses generic host/path/credential patterns, reports loc
 
 V51: Configured cleanup prompt loads once at startup; missing, unreadable, invalid UTF-8 or blank files fail clearly without logging contents. Unset keeps built-in instructions; per-request overrides and deterministic formatting/safety checks remain intact. Installer ships the generic template without overwriting separately named custom prompts.
 
+V52: Successful enabled cleanup deterministically formats explicit Spanish clock references as H:MM before model and safety comparison, including y media/cuarto, numeric minutes, menos and en punto. Preserve stated hour cycle without inferring AM/PM; reject changed times or surrounding words. Existing H:MM and bare numeric hours, durations, ambiguous and invalid phrases remain literal; disabled/unavailable cleanup retains raw failure contracts.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -129,6 +131,8 @@ T26|x|Validate meaning-changing cleanup edits|Keep existing protections; audit c
 
 T27|x|Scope GPU reservations to real shared-device users|Ignore CPU-only FFmpeg; scope NVIDIA queries to cleanup-visible devices; preserve hardware transcoding on separate GPU and remove fixed cooldown; verify offline and live media-server encode with warm cleanup.|I.config,I.residency,V44,V49
 
+T28|x|Format Spanish clock references|Prepare explicit clock phrases before cleanup, normalize model output, protect values and context, verify offline and deployed text/audio.|I.postprocess,I.transcribe,C3,C7,V52
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -161,3 +165,5 @@ B27|2026-10-29|Pinned conjugation data omitted common lemmas including tener and
 B28|2026-11-01|Process-name watcher evicted cleanup for unrelated CPU FFmpeg and transcoding on another GPU, then imposed a ten-second reservation|V49
 
 B29|2026-11-01|Scanner leaked private host names in its denylist and returned success when process-substitution Git enumeration failed outside a repository|V50
+
+B30|2026-11-02|Cleanup lacked explicit clock normalization; spoken fractional hours survived unchanged and safety comparison rejected equivalent H:MM output|V52
