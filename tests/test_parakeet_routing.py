@@ -132,7 +132,7 @@ class ParakeetRoutingTest(unittest.TestCase):
                 self.assertEqual(segments, ["Hola"])
                 self.assertEqual(stop.called, not keep_warm)
         for line in process.stdin.getvalue().splitlines():
-            self.assertEqual(set(json.loads(line)), {"request_id", "audio_path"})
+            self.assertEqual(set(json.loads(line)), {"request_id", "audio_path", "language"})
 
     def test_v40_failure_stops_resident_worker_without_private_errors(self):
         process = SimpleNamespace(pid=123, stdin=io.StringIO(), poll=lambda: None)

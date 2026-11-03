@@ -93,7 +93,7 @@ V51: Configured cleanup prompt loads once at startup; missing, unreadable, inval
 
 V52: Successful enabled cleanup deterministically formats explicit Spanish clock references as H:MM before model and safety comparison, including y media/cuarto, numeric minutes, menos and en punto. Preserve stated hour cycle without inferring AM/PM; reject changed times or surrounding words. Existing H:MM and bare numeric hours, durations, ambiguous and invalid phrases remain literal; disabled/unavailable cleanup retains raw failure contracts.
 
-V53: Spanish-hinted Parakeet output containing Cyrillic retries original audio once through Whisper with language es, temperature zero, and bounded prompt before cleanup. Empty, Cyrillic, or failed recovery returns sanitized 503. Other hints/scripts and ordinary Spanish keep existing routing. Honor residency lock, release nonwarm Whisper, preserve initial/recovered history text, and expose fallback timing without transcript logs.
+V53: Spanish-hinted Parakeet output containing Cyrillic retries once on the same loaded Parakeet model after appending 0.5 seconds of silence to decoded PCM; original speech samples remain identical. Empty, Cyrillic, or failed recovery returns sanitized 503 without evicting the warm worker. Other hints/scripts and ordinary Spanish keep existing routing. Never load another model for recovery; preserve initial/recovered history text and expose recovery timing without transcript logs.
 
 §T
 id|status|task|detail|cites
@@ -171,3 +171,5 @@ B29|2026-11-01|Scanner leaked private host names in its denylist and returned su
 B30|2026-11-02|Cleanup lacked explicit clock normalization; spoken fractional hours survived unchanged and safety comparison rejected equivalent H:MM output|V52
 
 B31|2026-11-03|Parakeet automatically detected Russian for short Spanish audio despite the accepted es hint; cleanup preserved Cyrillic output|V53
+
+B32|2026-11-03|Cross-engine Cyrillic recovery incurred model-switch latency; replaced with one same-model trailing-silence retry after real-audio probes recovered dolor; hard token masking and constrained beam search produced empty or numeric alternatives|V53

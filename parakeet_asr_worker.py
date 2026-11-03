@@ -10,6 +10,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
+import wave
 
 
 class CppParakeet:
@@ -55,7 +57,23 @@ def load_model():
     return md.photon(os.environ.get("ASR_PARAKEET_CHECKPOINT", "moondream/parakeet-ultra"), device="cuda")
 
 
-def transcribe_request(model, request: dict) -> list[str]:
+class LanguageRecoveryError(RuntimeError):
+    pass
+
+
+def _contains_cyrillic(text: str) -> bool:
+    return any("CYRILLIC" in unicodedata.name(char, "") for char in text)
+
+
+def _append_silence(source_path: str, target_path: str):
+    with wave.open(source_path, "rb") as source, wave.open(target_path, "wb") as target:
+        target.setparams(source.getparams())
+        while frames := source.readframes(65536):
+            target.writeframesraw(frames)
+        target.writeframes(b"\0" * (source.getframerate() // 2 * source.getsampwidth() * source.getnchannels()))
+
+
+def transcribe_request(model, request: dict, *, diagnostics: dict | None = None) -> list[str]:
     with tempfile.TemporaryDirectory(prefix="parakeet-audio-") as directory:
         audio_path = str(Path(directory) / "audio.wav")
         subprocess.run(
@@ -69,6 +87,21 @@ def transcribe_request(model, request: dict) -> list[str]:
         text = result["text"]
         if not isinstance(text, str):
             raise ValueError("Invalid transcription text")
+        if (request.get("language") or "").lower() == "es" and _contains_cyrillic(text):
+            started = time.monotonic()
+            initial_text = text
+            # Preserve speech samples; trailing silence changes short-clip boundary context.
+            padded_path = str(Path(directory) / "padded.wav")
+            try:
+                _append_silence(audio_path, padded_path)
+                text = model.transcribe(audio=padded_path, timestamps="none")["text"]
+                if not isinstance(text, str) or not text.strip() or _contains_cyrillic(text):
+                    raise LanguageRecoveryError()
+            except Exception:
+                raise LanguageRecoveryError("Spanish transcription recovery failed") from None
+            if diagnostics is not None:
+                diagnostics.update(initial_raw_text=initial_text, parakeet_language_fallback=1,
+                                   language_fallback_ms=round((time.monotonic() - started) * 1000))
         return [text]
 
 
@@ -86,9 +119,16 @@ def main():
                 with redirect_stdout(sys.stderr):
                     if model is None:
                         model = load_model()
-                    segments = transcribe_request(model, request)
+                    diagnostics = {}
+                    segments = transcribe_request(model, request, diagnostics=diagnostics)
                 response = {"request_id": request_id, "ok": True, "segments": segments,
                             "timings": {"parakeet_transcribe_ms": round((time.monotonic() - started) * 1000)}}
+                if "initial_raw_text" in diagnostics:
+                    response["initial_raw_text"] = diagnostics.pop("initial_raw_text")
+                    response["timings"].update(diagnostics)
+            except LanguageRecoveryError:
+                response = {"request_id": request_id, "ok": False,
+                            "error_code": "language_recovery_failed"}
             except Exception as exc:
                 response = {"request_id": request_id, "ok": False,
                             "error": f"Parakeet transcription failed ({type(exc).__name__})"}

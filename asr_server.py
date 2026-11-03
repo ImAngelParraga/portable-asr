@@ -1315,17 +1315,23 @@ def _run_parakeet_transcription(audio_path: str, language: str | None, temperatu
             if process.stdin is None:
                 raise RuntimeError("Parakeet worker stdin unavailable")
             request_id = uuid.uuid4().hex
-            process.stdin.write(json.dumps({"request_id": request_id, "audio_path": audio_path}) + "\n")
+            process.stdin.write(json.dumps({"request_id": request_id, "audio_path": audio_path, "language": language}) + "\n")
             process.stdin.flush()
             payload = _read_whisper_worker_response(
                 process, time.monotonic() + ASR_REQUEST_TIMEOUT, request_id, "Parakeet"
             )
             if payload.get("ok") is not True:
+                if payload.get("error_code") == "language_recovery_failed":
+                    raise HTTPException(status_code=503, detail="Spanish transcription recovery failed")
                 raise RuntimeError("Parakeet transcription failed")
             segments = payload.get("segments")
             if not isinstance(segments, list) or not all(isinstance(s, str) for s in segments):
                 raise RuntimeError("Parakeet worker returned invalid segments")
             timings = payload.get("timings") if isinstance(payload.get("timings"), dict) else {}
+            if isinstance(payload.get("initial_raw_text"), str):
+                timings["_language_fallback_raw_text"] = payload["initial_raw_text"]
+        except HTTPException:
+            raise
         except Exception:
             _stop_parakeet_worker("request failure")
             raise
@@ -1335,41 +1341,10 @@ def _run_parakeet_transcription(audio_path: str, language: str | None, temperatu
         timings["parakeet_worker_roundtrip_ms"] = _timing_ms(started)
         return segments, timings
 
-def _contains_cyrillic(text: str) -> bool:
-    return any("CYRILLIC" in unicodedata.name(char, "") for char in text)
-
-
-def _transcribe_with_language_guard(engine, transcribe, audio_path, language, temperature, prompt):
-    segments, timings = transcribe(audio_path, language, temperature, prompt)
-    raw_text = " ".join(segments).strip()
-    if engine != "parakeet" or (language or "").lower() != "es" or not _contains_cyrillic(raw_text):
-        return segments, timings
-
-    # Retry the audio rather than guessing words from an incompatible script.
-    print("[asr] language fallback source=parakeet target=whisper reason=spanish_cyrillic")
-    started = time.monotonic()
-    try:
-        recovered, retry_timings = _dispatch_transcription("whisper", audio_path, "es", 0.0, prompt)
-        recovered_text = " ".join(recovered).strip()
-        if not recovered_text or _contains_cyrillic(recovered_text):
-            raise ValueError("incompatible fallback output")
-    except Exception:
-        raise HTTPException(status_code=503, detail="Spanish transcription recovery failed") from None
-    finally:
-        if not ASR_WHISPER_KEEP_WARM:
-            unload_model()
-    return recovered, {
-        **timings, **retry_timings,
-        "parakeet_language_fallback": 1,
-        "language_fallback_ms": _timing_ms(started),
-        "_language_fallback_raw_text": raw_text,
-    }
-
-
 def _dispatch_transcription(engine: str, audio_path: str, language: str | None, temperature: float, prompt: str | None = None):
     transcribe = {"qwen": _run_qwen_transcription, "parakeet": _run_parakeet_transcription}.get(engine, _run_transcription)
     if not ASR_SINGLE_RESIDENT_MODEL:
-        return _transcribe_with_language_guard(engine, transcribe, audio_path, language, temperature, prompt)
+        return transcribe(audio_path, language, temperature, prompt)
     # Hold the lock through inference so another request cannot unload an active worker.
     with _asr_engine_lock:
         if engine != "whisper":
@@ -1379,7 +1354,7 @@ def _dispatch_transcription(engine: str, audio_path: str, language: str | None, 
             _stop_qwen_worker("ASR model switch")
         if engine != "parakeet":
             _stop_parakeet_worker("ASR model switch")
-        return _transcribe_with_language_guard(engine, transcribe, audio_path, language, temperature, prompt)
+        return transcribe(audio_path, language, temperature, prompt)
 
 def _transcribe_worker_loop():
     model_obj = load_model()
@@ -3191,7 +3166,7 @@ async def transcriptions(
         if initial_text is not None:
             await asyncio.to_thread(
                 _audio_history_update_safe, history_record,
-                initial_raw_text=initial_text, recognition_engine="whisper",
+                initial_raw_text=initial_text, recognition_engine="parakeet",
                 fallback_reason="spanish_cyrillic",
             )
         full_text = " ".join(text_parts).strip()
