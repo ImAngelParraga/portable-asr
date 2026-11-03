@@ -1335,10 +1335,41 @@ def _run_parakeet_transcription(audio_path: str, language: str | None, temperatu
         timings["parakeet_worker_roundtrip_ms"] = _timing_ms(started)
         return segments, timings
 
+def _contains_cyrillic(text: str) -> bool:
+    return any("CYRILLIC" in unicodedata.name(char, "") for char in text)
+
+
+def _transcribe_with_language_guard(engine, transcribe, audio_path, language, temperature, prompt):
+    segments, timings = transcribe(audio_path, language, temperature, prompt)
+    raw_text = " ".join(segments).strip()
+    if engine != "parakeet" or (language or "").lower() != "es" or not _contains_cyrillic(raw_text):
+        return segments, timings
+
+    # Retry the audio rather than guessing words from an incompatible script.
+    print("[asr] language fallback source=parakeet target=whisper reason=spanish_cyrillic")
+    started = time.monotonic()
+    try:
+        recovered, retry_timings = _dispatch_transcription("whisper", audio_path, "es", 0.0, prompt)
+        recovered_text = " ".join(recovered).strip()
+        if not recovered_text or _contains_cyrillic(recovered_text):
+            raise ValueError("incompatible fallback output")
+    except Exception:
+        raise HTTPException(status_code=503, detail="Spanish transcription recovery failed") from None
+    finally:
+        if not ASR_WHISPER_KEEP_WARM:
+            unload_model()
+    return recovered, {
+        **timings, **retry_timings,
+        "parakeet_language_fallback": 1,
+        "language_fallback_ms": _timing_ms(started),
+        "_language_fallback_raw_text": raw_text,
+    }
+
+
 def _dispatch_transcription(engine: str, audio_path: str, language: str | None, temperature: float, prompt: str | None = None):
     transcribe = {"qwen": _run_qwen_transcription, "parakeet": _run_parakeet_transcription}.get(engine, _run_transcription)
     if not ASR_SINGLE_RESIDENT_MODEL:
-        return transcribe(audio_path, language, temperature, prompt)
+        return _transcribe_with_language_guard(engine, transcribe, audio_path, language, temperature, prompt)
     # Hold the lock through inference so another request cannot unload an active worker.
     with _asr_engine_lock:
         if engine != "whisper":
@@ -1348,7 +1379,7 @@ def _dispatch_transcription(engine: str, audio_path: str, language: str | None, 
             _stop_qwen_worker("ASR model switch")
         if engine != "parakeet":
             _stop_parakeet_worker("ASR model switch")
-        return transcribe(audio_path, language, temperature, prompt)
+        return _transcribe_with_language_guard(engine, transcribe, audio_path, language, temperature, prompt)
 
 def _transcribe_worker_loop():
     model_obj = load_model()
@@ -3156,6 +3187,13 @@ async def transcriptions(
         except asyncio.TimeoutError:
             raise HTTPException(status_code=504, detail="Transcription timed out")
 
+        initial_text = engine_timings.pop("_language_fallback_raw_text", None)
+        if initial_text is not None:
+            await asyncio.to_thread(
+                _audio_history_update_safe, history_record,
+                initial_raw_text=initial_text, recognition_engine="whisper",
+                fallback_reason="spanish_cyrillic",
+            )
         full_text = " ".join(text_parts).strip()
         await asyncio.to_thread(_audio_history_update_safe, history_record, raw_text=full_text, status="recognized")
 

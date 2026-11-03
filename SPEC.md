@@ -93,6 +93,8 @@ V51: Configured cleanup prompt loads once at startup; missing, unreadable, inval
 
 V52: Successful enabled cleanup deterministically formats explicit Spanish clock references as H:MM before model and safety comparison, including y media/cuarto, numeric minutes, menos and en punto. Preserve stated hour cycle without inferring AM/PM; reject changed times or surrounding words. Existing H:MM and bare numeric hours, durations, ambiguous and invalid phrases remain literal; disabled/unavailable cleanup retains raw failure contracts.
 
+V53: Spanish-hinted Parakeet output containing Cyrillic retries original audio once through Whisper with language es, temperature zero, and bounded prompt before cleanup. Empty, Cyrillic, or failed recovery returns sanitized 503. Other hints/scripts and ordinary Spanish keep existing routing. Honor residency lock, release nonwarm Whisper, preserve initial/recovered history text, and expose fallback timing without transcript logs.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -167,3 +169,5 @@ B28|2026-11-01|Process-name watcher evicted cleanup for unrelated CPU FFmpeg and
 B29|2026-11-01|Scanner leaked private host names in its denylist and returned success when process-substitution Git enumeration failed outside a repository|V50
 
 B30|2026-11-02|Cleanup lacked explicit clock normalization; spoken fractional hours survived unchanged and safety comparison rejected equivalent H:MM output|V52
+
+B31|2026-11-03|Parakeet automatically detected Russian for short Spanish audio despite the accepted es hint; cleanup preserved Cyrillic output|V53
