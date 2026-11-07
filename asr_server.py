@@ -2618,6 +2618,35 @@ def _validate_cleanup_edit(source: str, corrected: str, system_prompt: str) -> s
     print(f"[llm] cleanup edit validation verdict={verdict} elapsed_ms={elapsed_ms}")
     return corrected if verdict == "accepted" else source
 
+_SPANISH_STANDALONE_LO_COMMANDS = {
+    "implementa": "impleméntalo", "revisa": "revísalo", "prueba": "pruébalo",
+    "haz": "hazlo", "corrige": "corrígelo", "aplica": "aplícalo",
+    "ejecuta": "ejecútalo", "guarda": "guárdalo", "borra": "bórralo",
+    "cambia": "cámbialo", "actualiza": "actualízalo", "explica": "explícalo",
+}
+_SPANISH_STANDALONE_LO_RE = re.compile(
+    r"(?P<prefix>(?:^|(?<=[.!?])\s+)(?:(?:perfecto|vale|bien|sí|ok|de acuerdo),\s*)?"
+    r"(?:por favor,?\s+)?)"
+    r"(?P<verb>" + "|".join(_SPANISH_STANDALONE_LO_COMMANDS) + r")\s+lo"
+    r"(?=\s*(?:[.!](?:\s|$)|$))",
+    re.IGNORECASE,
+)
+
+
+def _prepare_spanish_standalone_enclitics(text: str) -> str:
+    """Join known imperative + lo only in a standalone command clause."""
+    def join_command(match: re.Match) -> str:
+        verb = match.group("verb")
+        joined = _SPANISH_STANDALONE_LO_COMMANDS[verb.casefold()]
+        if verb.isupper():
+            joined = joined.upper()
+        elif verb[0].isupper():
+            joined = joined.capitalize()
+        return match.group("prefix") + joined
+
+    return _SPANISH_STANDALONE_LO_RE.sub(join_command, text)
+
+
 def _spanish_pronoun_tokens(text: str) -> list[str]:
     pronouns = {
         "me", "te", "se", "nos", "os",
@@ -2785,7 +2814,9 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
-    cleanup_source = _format_clock_times(_prepare_preposition_restarts(raw_text))
+    cleanup_source = _prepare_spanish_standalone_enclitics(
+        _format_clock_times(_prepare_preposition_restarts(raw_text))
+    )
     prepared_text = _format_quantity_symbols(
         _repair_spoken_class_identifiers(cleanup_source, _prepare_spelled_words(cleanup_source))
     )
@@ -2835,6 +2866,7 @@ def _postprocess_transcript(
     corrected = _apply_isolated_expression_command(_remove_question_directives(_strip_reasoning_blocks(corrected)))
     corrected = _apply_isolated_expression_sentences(corrected)
     corrected = _apply_explicit_paragraph_breaks(corrected)
+    corrected = _prepare_spanish_standalone_enclitics(corrected)
     corrected = _protect_non_isolated_expression_rewrite(cleanup_source, corrected)
     corrected = re.sub(
         r'^\s*(cleaned\s+text|text\s+cleaned|transcript\s+cleaned|cleaned\s+transcript|texto\s+limpio|texto\s+corregido|transcripción\s+limpia|transcripcion\s+limpia)\s*[:：\-–—]\s*',

@@ -95,6 +95,8 @@ V52: Successful enabled cleanup deterministically formats explicit Spanish clock
 
 V53: Spanish-hinted Parakeet output containing Cyrillic retries once on the same loaded Parakeet model after appending 0.5 seconds of silence to decoded PCM; original speech samples remain identical. Empty, Cyrillic, or failed recovery returns sanitized 503 without evicting the warm worker. Other hints/scripts and ordinary Spanish keep existing routing. Never load another model for recovery; preserve initial/recovered history text and expose recovery timing without transcript logs.
 
+V54: Successful enabled cleanup joins a bounded set of known Spanish imperative + lo forms only as standalone sentence commands, optionally introduced by a short affirmative or por favor. Prepare before model and safety guards; normalize copied model output. Preserve relative clauses, lo de/lo mismo/lo posible, articles, quoted mentions and ambiguous subjects. Disabled/unavailable cleanup retains raw failure contracts.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -135,6 +137,8 @@ T27|x|Scope GPU reservations to real shared-device users|Ignore CPU-only FFmpeg;
 
 T28|x|Format Spanish clock references|Prepare explicit clock phrases before cleanup, normalize model output, protect values and context, verify offline and deployed text/audio.|I.postprocess,I.transcribe,C3,C7,V52
 
+T29|x|Repair split standalone Spanish commands|Prepare bounded imperative enclitics before cleanup safeguards; verify copied and joined model output, ordinary lo clauses and failure contracts.|I.postprocess,I.transcribe,V54
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -173,3 +177,5 @@ B30|2026-11-02|Cleanup lacked explicit clock normalization; spoken fractional ho
 B31|2026-11-03|Parakeet automatically detected Russian for short Spanish audio despite the accepted es hint; cleanup preserved Cyrillic output|V53
 
 B32|2026-11-03|Cross-engine Cyrillic recovery incurred model-switch latency; replaced with one same-model trailing-silence retry after real-audio probes recovered dolor; hard token masking and constrained beam search produced empty or numeric alternatives|V53
+
+B33|2026-11-07|Parakeet split standalone impleméntalo into implementa lo; cleanup copied the split and pronoun/order safeguards rejected joined output without a prepared equivalent|V54
