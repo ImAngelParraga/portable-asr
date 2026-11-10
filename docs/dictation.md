@@ -47,3 +47,46 @@ For a difficult word, say `deletreo`, speak letter names, then say `fin de delet
 With post-processing enabled, `class task controller` / `clase task controller` becomes `class TaskController` / `clase TaskController`. This conservative rule accepts two to four name words ending in `Controller`, `Manager`, `Handler`, `Factory`, `Builder`, `Adapter`, `Provider`, or `Repository`, followed by punctuation, sentence end, or a clear clause boundary. Existing identifiers, explicit separators, and ambiguous prose remain unchanged. Class names are prepared before cleanup and protected against LLM replacement.
 
 For project names, say separators explicitly: `project demo hyphen tools` becomes `project demo-tools`; `proyecto demo guion bajo tools` becomes `proyecto demo_tools`. Technical cue words remain ordinary nouns inside a sentence. Exact unconventional spelling still requires vocabulary context or spelling controls.
+
+## Terminal Command Dictation
+
+Start a recording with `comando` (also `modo comando` or English `command`).
+The rest of that recording becomes command text through deterministic rules,
+without LLM cleanup or changes to the service prompt. This works even when
+optional post-processing is disabled. Every following recording starts in normal
+dictation again. The prefix is reserved only at the beginning of a recording.
+
+| Say | Insert |
+|---|---|
+| `comando barra new` | `/new` |
+| `comando slash clear` | `/clear` |
+| `comando deletreo eme ka de i erre` | `mkdir` |
+| `comando deletreo m k d i r fin deletreo espacio proyectos` | `mkdir proyectos` |
+| `comando git espacio guion guion version` | `git --version` |
+| `comando touch espacio mi guion bajo archivo punto txt` | `touch mi_archivo.txt` |
+| `command spell em kay dee eye ar end spelling space projects` | `mkdir projects` |
+
+Normal words are separated with spaces. Spoken symbols attach to adjacent text;
+use `espacio` / `space` when a space is needed beside a symbol. Supported symbols:
+`barra` / `slash`, `barra invertida` / `backslash`, `guion` / `hyphen` / `dash`,
+`guion bajo` / `barra baja` / `underscore`, `punto` / `dot`, `dos puntos` / `colon`,
+`igual` / `equals`, `comilla simple` / `single quote`, `comilla doble` / `comillas` /
+`double quote`, `pipe` / `tubería`, `ampersand`, `mayor que` / `greater than`,
+`menor que` / `less than`, `dólar` / `dollar`, `asterisco` / `asterisk`, and `tilde`.
+Only spoken symbol names guarantee literal punctuation: ASR sentence punctuation
+is removed. No newline or Enter is generated.
+
+Commands default to lowercase. `mayúscula` / `uppercase` uppercases the next word,
+or the next letter inside spelling. For example, `comando echo espacio dólar
+mayúscula home` inserts `echo $HOME`. To spell a reserved word, use its letter names.
+Spelling accepts Spanish and English letter names, single letters, and individual
+digits (including spoken zero through nine). Close a spelling span with `fin
+deletreo`, `fin de deletreo`, or `end spelling` before continuing the command; the
+end of a recording also closes it. Unknown letter names or incomplete controls
+return HTTP 422 rather than guessing a command. Recognition errors remain possible;
+check the inserted text before pressing Enter.
+
+Successful command audio responses add `"verbatim": true` beside `text`.
+OpenVoiceIME uses this boolean to suppress its optional trailing space, including
+when insertion is confirmed or retried later. Other clients must preserve command
+text exactly themselves. Normal dictation responses keep their existing shape.

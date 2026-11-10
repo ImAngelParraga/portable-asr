@@ -34,6 +34,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from spoken_commands import CommandDictationError, parse_spoken_command, SPOKEN_LETTERS as _SPOKEN_LETTERS
+
 # ---- Configuration (from environment) ----
 ASR_MODEL_SIZE = os.environ.get("ASR_MODEL_SIZE", "base")
 ASR_DEVICE = os.environ.get("ASR_DEVICE", "cuda")
@@ -2094,24 +2096,7 @@ _SPELLING_CONTROL_RE = re.compile(
     r"\b(?:deletreo|spell)\b\s+(.+?)\s+\b(?:fin\s+de\s+deletreo|end\s+spelling)\b",
     re.IGNORECASE | re.DOTALL,
 )
-_SPOKEN_LETTERS = {
-    "a": "a", "be": "b", "b": "b", "ce": "c", "c": "c", "de": "d", "d": "d",
-    "e": "e", "efe": "f", "f": "f", "ge": "g", "g": "g", "hache": "h",
-    "i": "i", "jota": "j", "j": "j", "ka": "k", "k": "k", "ele": "l",
-    "l": "l", "eme": "m", "m": "m", "ene": "n", "n": "n", "eñe": "ñ",
-    "o": "o", "pe": "p", "p": "p", "cu": "q", "q": "q", "erre": "r",
-    "r": "r", "ese": "s", "s": "s", "te": "t", "t": "t", "u": "u",
-    "uve": "v", "v": "v", "doble u": "w", "w": "w", "equis": "x",
-    "x": "x", "ye": "y", "i griega": "y", "y": "y", "zeta": "z", "z": "z",
-    "a con tilde": "á", "e con tilde": "é", "i con tilde": "í",
-    "o con tilde": "ó", "u con tilde": "ú",
-    "ay": "a", "bee": "b", "see": "c", "dee": "d", "ee": "e",
-    "eff": "f", "gee": "g", "aitch": "h", "eye": "i", "jay": "j",
-    "kay": "k", "ell": "l", "em": "m", "en": "n", "oh": "o",
-    "pee": "p", "cue": "q", "ar": "r", "ess": "s", "tee": "t",
-    "you": "u", "vee": "v", "double you": "w", "ex": "x",
-    "why": "y", "zee": "z", "zed": "z",
-}
+
 
 def _prepare_spelled_words(text: str) -> str:
     """Join explicitly delimited spoken letters; leave uncertain spans untouched."""
@@ -2808,6 +2793,12 @@ def _postprocess_transcript(
     fail_closed: bool = False,
 ) -> str:
     """Use the local LLM to clean transcripts while preserving meaning."""
+    try:
+        command = parse_spoken_command(raw_text)
+    except CommandDictationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if command is not None:
+        return command
     if not ASR_POSTPROCESS_ENABLED or not raw_text.strip():
         return raw_text
     expression_result = _apply_isolated_expression_command(raw_text)
@@ -3202,6 +3193,7 @@ async def transcriptions(
                 fallback_reason="spanish_cyrillic",
             )
         full_text = " ".join(text_parts).strip()
+        raw_transcript = full_text
         await asyncio.to_thread(_audio_history_update_safe, history_record, raw_text=full_text, status="recognized")
 
         # If no segments, return empty
@@ -3246,6 +3238,8 @@ async def transcriptions(
             "text": full_text,
             "timings": timings,
         }
+        if parse_spoken_command(raw_transcript) is not None:
+            response["verbatim"] = True
         if history_record is not None:
             response["request_id"] = history_record["request_id"]
         return response

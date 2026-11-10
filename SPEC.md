@@ -97,6 +97,8 @@ V53: Spanish-hinted Parakeet output containing Cyrillic retries once on the same
 
 V54: Successful enabled cleanup joins a bounded set of known Spanish imperative + lo forms only as standalone sentence commands, optionally introduced by a short affirmative or por favor. Prepare before model and safety guards; normalize copied model output. Preserve relative clauses, lo de/lo mismo/lo posible, articles, quoted mentions and ambiguous subjects. Disabled/unavailable cleanup retains raw failure contracts.
 
+V55: Recording-leading comando / modo comando / command selects deterministic command dictation for that request only, even without optional cleanup. Symbols, explicit spaces, bilingual spelling with optional end marker at recording end, digits and explicit uppercase produce exact text without LLM rewriting or execution; invalid controls fail 422 without guessed output. Ordinary prose retains existing behavior. Audio JSON adds boolean verbatim=true only for valid commands; thin clients preserve exact insertion.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -139,6 +141,8 @@ T28|x|Format Spanish clock references|Prepare explicit clock phrases before clea
 
 T29|x|Repair split standalone Spanish commands|Prepare bounded imperative enclitics before cleanup safeguards; verify copied and joined model output, ordinary lo clauses and failure contracts.|I.postprocess,I.transcribe,V54
 
+T30|x|Dictate arbitrary terminal commands|Parse per-recording command prefix, symbols and spelling before optional cleanup; return exact insertion metadata; verify command grammar, rejected controls, request isolation and audio response offline.|I.transcribe,I.postprocess,V55,C7
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -179,3 +183,5 @@ B31|2026-11-03|Parakeet automatically detected Russian for short Spanish audio d
 B32|2026-11-03|Cross-engine Cyrillic recovery incurred model-switch latency; replaced with one same-model trailing-silence retry after real-audio probes recovered dolor; hard token masking and constrained beam search produced empty or numeric alternatives|V53
 
 B33|2026-11-07|Parakeet split standalone impleméntalo into implementa lo; cleanup copied the split and pronoun/order safeguards rejected joined output without a prepared equivalent|V54
+
+B34|2026-11-10|Verification invoked a relative virtualenv from parent workspace, so runner never started; reran from project root with absolute interpreter path|mechanical invocation error; no product invariant change
