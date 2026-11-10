@@ -2767,7 +2767,7 @@ def _is_single_letter_restart(first: str, last: str) -> bool:
     return abs(len(first) - len(last)) == 1
 
 
-def _prepare_speech_restarts(text: str) -> str:
+def _prepare_speech_restarts(text: str, *, phrase_choices: list[str] | None = None) -> str:
     """Remove bounded speech restarts without deleting substantive corrections."""
     # Explicit spelling/lists and metalinguistic discussion can enumerate these words.
     if re.search(
@@ -2819,13 +2819,31 @@ def _prepare_speech_restarts(text: str) -> str:
         # A following item or conjunction makes an enumeration ambiguous.
         if re.match(r"[ \t]*(?:,|\b(?:y|o|and|or)\b)", match.string[match.end():], re.IGNORECASE):
             return match.group(0)
-        return match.group("prefix") + " " + match.group("last")
+        replacement = match.group("prefix") + " " + match.group("last")
+        if phrase_choices is not None:
+            phrase_choices.append(replacement)
+        return replacement
 
     # Keep quoted speech and code verbatim. Apostrophes inside words are not quotes.
     parts = re.split(r"(`[^`]*`|\"[^\"]*\"|(?<!\w)'[^'\n]*'(?!\w)|“[^”]*”|«[^»]*»)", text)
     for index in range(0, len(parts), 2):
         parts[index] = phrase_pattern.sub(repair_phrase, pattern.sub(repair, parts[index]))
     return "".join(parts)
+
+
+def _protect_phrase_restart_choices(choices: list[str], prepared: str, corrected: str) -> str:
+    """Keep the final spoken phrase when cleanup tries to rewrite it."""
+    if not choices:
+        return corrected
+
+    def words(text: str) -> str:
+        return " " + " ".join(re.findall(r"\w+", text.casefold())) + " "
+
+    source_words, output_words = words(prepared), words(corrected)
+    if any(output_words.count(words(choice)) < source_words.count(words(choice)) for choice in choices):
+        return prepared
+    return corrected
+
 
 def _postprocess_transcript(
     raw_text: str,
@@ -2846,8 +2864,9 @@ def _postprocess_transcript(
     if expression_result != raw_text:
         return expression_result
 
+    phrase_choices = []
     cleanup_source = _prepare_spanish_standalone_enclitics(
-        _format_clock_times(_prepare_speech_restarts(raw_text))
+        _format_clock_times(_prepare_speech_restarts(raw_text, phrase_choices=phrase_choices))
     )
     prepared_text = _format_quantity_symbols(
         _repair_spoken_class_identifiers(cleanup_source, _prepare_spelled_words(cleanup_source))
@@ -2918,6 +2937,7 @@ def _postprocess_transcript(
     corrected = _protect_spoken_class_identifiers(cleanup_source, prepared_text, corrected)
     corrected = _protect_spanish_haber_rewrite(prepared_text, corrected)
     corrected = _protect_meaningful_order_rewrite(prepared_text, corrected)
+    corrected = _protect_phrase_restart_choices(phrase_choices, prepared_text, corrected)
     corrected = _validate_cleanup_edit(prepared_text, corrected, system_prompt)
     corrected = _protect_statement_question_rewrite(prepared_text, corrected)
     corrected = _enforce_question_directives(question_source, corrected)

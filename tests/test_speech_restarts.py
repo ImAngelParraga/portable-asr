@@ -63,6 +63,12 @@ class SpeechRestartTest(unittest.TestCase):
             with self.assertRaises(asr_server.PostprocessUnavailable):
                 asr_server._postprocess_transcript(raw, fail_closed=True)
 
+    def test_v56_model_cannot_restore_abandoned_final_word(self):
+        raw = "Para la ausencia médica puedes utilizar esta tarea dentro del tiempo, dentro del tempo."
+        edited = "Para la ausencia médica puedes utilizar esta tarea dentro del tiempo."
+        expected = "Para la ausencia médica puedes utilizar esta tarea dentro del tempo."
+        self.assertEqual(self.cleanup(raw, edited)[0], expected)
+
     def test_v34_corrected_prepositions_survive_full_cleanup(self):
         cases = (
             ("Quiero ir a, al edificio de allí", "Quiero ir al edificio de allí"),
