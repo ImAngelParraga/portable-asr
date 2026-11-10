@@ -99,6 +99,8 @@ V54: Successful enabled cleanup joins a bounded set of known Spanish imperative 
 
 V55: Recording-leading comando / modo comando / command selects deterministic command dictation for that request only, even without optional cleanup. Symbols, explicit spaces, bilingual spelling with optional end marker at recording end, digits and explicit uppercase produce exact text without LLM rewriting or execution; invalid controls fail 422 without guessed output. Ordinary prose retains existing behavior. Audio JSON adds boolean verbatim=true only for valid commands; thin clients preserve exact insertion.
 
+V56: Enabled successful cleanup prepares bounded Spanish prepositional phrase restarts before model and safety comparison: repeat a two-to-five-word prefix across comma, ellipsis or pause dash, with a final word of at least four letters changed by one letter; retain final spoken phrase even for copied model output. No vocabulary replacement; preserve verbs, quantities, identical repetitions, alternatives/enumerations, quotes/code, metalinguistic mentions and unrelated or unmarked changes. Disabled/unavailable cleanup retains raw failure contracts.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -143,6 +145,8 @@ T29|x|Repair split standalone Spanish commands|Prepare bounded imperative enclit
 
 T30|x|Dictate arbitrary terminal commands|Parse per-recording command prefix, symbols and spelling before optional cleanup; return exact insertion metadata; verify command grammar, rejected controls, request isolation and audio response offline.|I.transcribe,I.postprocess,V55,C7
 
+T31|x|Retain final phrase in bounded speech restarts|Prepare repeated Spanish prepositional phrases before safety guards, preserve literal contexts, verify reported recording and copied model output.|I.postprocess,I.transcribe,V56,C3,C7
+
 §B
 id|date|cause|fix
 B1|2026-07-13|ASCII-only guard rejected accented spoken identifiers; transcript-wide underscore repair rewrote unrelated hyphens|V10
@@ -185,3 +189,4 @@ B32|2026-11-03|Cross-engine Cyrillic recovery incurred model-switch latency; rep
 B33|2026-11-07|Parakeet split standalone impleméntalo into implementa lo; cleanup copied the split and pronoun/order safeguards rejected joined output without a prepared equivalent|V54
 
 B34|2026-11-10|Verification invoked a relative virtualenv from parent workspace, so runner never started; reran from project root with absolute interpreter path|mechanical invocation error; no product invariant change
+B35|2026-11-10|Restart preparation handled only adjacent prepositions; repeated corrected phrase survived model copying and safety guards rejected deleting the abandoned phrase|V56

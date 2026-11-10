@@ -15,6 +15,54 @@ class SpeechRestartTest(unittest.TestCase):
             result = asr_server._postprocess_transcript(raw)
         return result, chat.call_args.args[0][-1]["content"]
 
+    def test_v56_phrase_restart_keeps_last_choice(self):
+        cases = (
+            ("Para la ausencia médica puedes utilizar esta tarea dentro del tiempo, dentro del tempo.",
+             "Para la ausencia médica puedes utilizar esta tarea dentro del tempo."),
+            ("Dentro del tiempo... dentro del tempo", "Dentro del tempo"),
+            ("Dentro del tempo… dentro del tiempo", "Dentro del tiempo"),
+            ("Regístralo dentro del tiempo — dentro del tempo hoy.",
+             "Regístralo dentro del tempo hoy."),
+        )
+        for raw, expected in cases:
+            for output in (raw, expected):
+                with self.subTest(raw=raw, output=output):
+                    result, prompt = self.cleanup(raw, output)
+                    self.assertEqual(result, expected)
+                    self.assertIn(expected, prompt)
+
+    def test_v56_phrase_restart_preserves_meaningful_repetitions(self):
+        cases = (
+            "Dentro del tiempo, dentro del tiempo.",
+            "Dentro del tiempo dentro del tempo.",
+            "Dentro del tiempo, dentro del espacio.",
+            "Mañana lo mando, mañana lo mandó.",
+            "En el mando, en el mandó.",
+            "En los sesenta, en los setenta.",
+            "We should walk, we should talk.",
+            "Cuesta unos veinte, cuesta unos treinta.",
+            "Dentro del tiempo, dentro del tempo y dentro del templo.",
+            'Dijo "dentro del tiempo, dentro del tempo".',
+            "Usa `dentro del tiempo, dentro del tempo`.",
+            "La frase es dentro del tiempo, dentro del tempo.",
+            "Lista de ítems dentro del tiempo, dentro del tempo fin de lista",
+        )
+        for raw in cases:
+            with self.subTest(raw=raw):
+                self.assertEqual(asr_server._prepare_speech_restarts(raw), raw)
+
+    def test_v56_phrase_restart_failure_contract(self):
+        raw = "Dentro del tiempo, dentro del tempo."
+        with patch.object(asr_server, "ASR_POSTPROCESS_ENABLED", False):
+            self.assertEqual(asr_server._postprocess_transcript(raw), raw)
+        with (
+            patch.object(asr_server, "ASR_POSTPROCESS_ENABLED", True),
+            patch.object(asr_server, "_llm_chat", side_effect=RuntimeError("unavailable")),
+        ):
+            self.assertEqual(asr_server._postprocess_transcript(raw), raw)
+            with self.assertRaises(asr_server.PostprocessUnavailable):
+                asr_server._postprocess_transcript(raw, fail_closed=True)
+
     def test_v34_corrected_prepositions_survive_full_cleanup(self):
         cases = (
             ("Quiero ir a, al edificio de allí", "Quiero ir al edificio de allí"),

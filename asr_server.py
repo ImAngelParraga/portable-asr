@@ -324,6 +324,7 @@ Core rules:
    - You can see that on, in this file -> You can see that in this file
    - Voy a, a casa -> Voy a casa
    A comma, ellipsis, or pause dash between adjacent prepositions may mark a restart. Preserve prepared restart repairs.
+   Prepared Spanish prepositional phrase restarts also retain the final choice: dentro del tiempo, dentro del tempo -> dentro del tempo. Do not restore the abandoned phrase.
    Do not remove meaningful repetitions, emphasis, negation, alternatives, enumerations, quotations, technical literals, or substantive corrections such as "tomorrow, no, Friday". If the restart is ambiguous, preserve it.
 5. Convert clear spoken numbers to digits:
    - twenty-five -> 25
@@ -2749,12 +2750,30 @@ async def _acquire_concurrency_slot(kind: str):
             detail=f"Server busy, timed out waiting to start {kind}",
         ) from None
 
-def _prepare_preposition_restarts(text: str) -> str:
+def _is_single_letter_restart(first: str, last: str) -> bool:
+    """Recognize a small final-word repair, preserving verbs and quantities."""
+    first, last = first.lower(), last.lower()
+    if min(len(first), len(last)) < 4 or first == last:
+        return False
+    lexicon = _spanish_verb_lexicon()
+    if lexicon is None or first in lexicon or last in lexicon:
+        return False
+    if any(_spoken_number_at([word], 0) is not None for word in (first, last)):
+        return False
+    for index, (before, after) in enumerate(zip(first, last)):
+        if before != after:
+            left, right = first[index:], last[index:]
+            return left[1:] == right[1:] or left[1:] == right or left == right[1:]
+    return abs(len(first) - len(last)) == 1
+
+
+def _prepare_speech_restarts(text: str) -> str:
     """Remove bounded speech restarts without deleting substantive corrections."""
     # Explicit spelling/lists and metalinguistic discussion can enumerate these words.
     if re.search(
         r"\b(?:prepositions?|preposiciones?|spell|deletreo|lista|list|"
-        r"identifier|identificador|literal|code|código)\b", text, re.IGNORECASE,
+        r"identifier|identificador|literal|code|código|frases?|phrases?|"
+        r"palabras?|words?|dicho|dije|said)\b", text, re.IGNORECASE,
     ):
         return text
     prepositions = {"a", "al", "de", "del", "en", "con", "por", "para",
@@ -2780,10 +2799,32 @@ def _prepare_preposition_restarts(text: str) -> str:
             replacement = replacement[:1].upper() + replacement[1:]
         return replacement + match.group("space") + match.group("next")
 
+    word = r"[^\W\d_]+"
+    phrase_pattern = re.compile(
+        rf"\b(?P<prefix>{word}(?:[ \t]+{word}){{1,4}})[ \t]+(?P<first>{word})"
+        rf"[ \t]*(?:,|\.{{2,}}|…|[—–-])[ \t]*"
+        rf"(?P=prefix)[ \t]+(?P<last>{word})\b",
+        re.IGNORECASE,
+    )
+
+    def repair_phrase(match: re.Match) -> str:
+        if not re.match(
+            r"(?:(?:dentro|fuera|antes|después|debajo|encima|cerca|lejos)[ \t]+(?:de|del)|"
+            r"(?:en|con|sin|para|por|desde|hasta|entre|sobre|hacia|tras)[ \t]+"
+            r"(?:el|la|los|las|un|una))\b", match.group("prefix"), re.IGNORECASE,
+        ):
+            return match.group(0)
+        if not _is_single_letter_restart(match.group("first"), match.group("last")):
+            return match.group(0)
+        # A following item or conjunction makes an enumeration ambiguous.
+        if re.match(r"[ \t]*(?:,|\b(?:y|o|and|or)\b)", match.string[match.end():], re.IGNORECASE):
+            return match.group(0)
+        return match.group("prefix") + " " + match.group("last")
+
     # Keep quoted speech and code verbatim. Apostrophes inside words are not quotes.
     parts = re.split(r"(`[^`]*`|\"[^\"]*\"|(?<!\w)'[^'\n]*'(?!\w)|“[^”]*”|«[^»]*»)", text)
     for index in range(0, len(parts), 2):
-        parts[index] = pattern.sub(repair, parts[index])
+        parts[index] = phrase_pattern.sub(repair_phrase, pattern.sub(repair, parts[index]))
     return "".join(parts)
 
 def _postprocess_transcript(
@@ -2806,7 +2847,7 @@ def _postprocess_transcript(
         return expression_result
 
     cleanup_source = _prepare_spanish_standalone_enclitics(
-        _format_clock_times(_prepare_preposition_restarts(raw_text))
+        _format_clock_times(_prepare_speech_restarts(raw_text))
     )
     prepared_text = _format_quantity_symbols(
         _repair_spoken_class_identifiers(cleanup_source, _prepare_spelled_words(cleanup_source))
@@ -2853,7 +2894,7 @@ def _postprocess_transcript(
     corrected = _remove_quoted_and_empty_wrapper_lines(corrected)
 
     if cleanup_source != raw_text:
-        corrected = _prepare_preposition_restarts(corrected)
+        corrected = _prepare_speech_restarts(corrected)
     corrected = _apply_isolated_expression_command(_remove_question_directives(_strip_reasoning_blocks(corrected)))
     corrected = _apply_isolated_expression_sentences(corrected)
     corrected = _apply_explicit_paragraph_breaks(corrected)

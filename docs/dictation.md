@@ -8,6 +8,8 @@ With post-processing enabled, bounded preposition restarts keep the final choice
 
 Meaningful corrections such as `tomorrow, no, Friday`, emphasis, alternatives, quoted speech, code, and explicit spelling/list controls remain outside this rule. Unmarked or ambiguous restarts stay literal. The cleanup model receives text, so it cannot recover pauses that ASR omitted. Disabled or unavailable optional cleanup returns the original raw transcript.
 
+Spanish prepositional phrases can also restart: `dentro del tiempo, dentro del tempo` becomes `dentro del tempo`. This bounded rule requires a repeated prefix of two to five words, a pause separator, and a final word of at least four letters changing by one letter. It keeps the final spoken word without choosing replacement vocabulary. Verbs, quantities, identical emphasis, enumerations, quoted or metalinguistic mentions, and unrelated word changes remain literal.
+
 ## Questions In Dictation
 
 Default post-processing uses sentence context to restore Spanish direct questions and conversational requests, even when the ASR output ends with a period. For example, `puedes enviarme el archivo` normally becomes `¿Puedes enviarme el archivo?`. Indirect questions such as `no sé cómo funciona esto` remain statements. Cleanup changes punctuation and accents without inserting question words.
