@@ -347,8 +347,9 @@ Paragraphing rules:
 
 List formatting control rules:
 - Treat `lista de ítems` / `lista con viñetas` / `item list` / `bullet list` as a bulleted-list control only when followed by at least two clear items.
-- Treat `lista numerada` / `lista con números` / `numbered list` as a numbered-list control only when followed by at least two clear items.
+- Treat `lista numerada` / `lista ordenada` / `lista con números` / `numbered list` as a numbered-list control only when followed by at least two clear items.
 - In either list type, `nuevo ítem` / `nuevo elemento` / `siguiente elemento` / `new item` / `next item` starts the next item.
+- Accept sentence punctuation after controls and an optional item marker before the first item; do not create empty items.
 - `fin de lista` / `end of list` ends the list; preserve following speech as normal prose.
 - Remove recognized list control phrases from the output.
 - Preserve the clause immediately before the list control as the introduction and add an implicit colon. Do not invent a title when there is no introduction.
@@ -2001,7 +2002,7 @@ def _normalized_word_tokens(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+", _normalized_plain_text(text))
 
 _LIST_TRIGGER_RE = re.compile(
-    r"(?P<numbered>\b(?:lista\s+numerada|lista\s+con\s+n[uú]meros|numbered\s+list)\b)|"
+    r"(?P<numbered>\b(?:lista\s+(?:numerada|ordenada)|lista\s+con\s+n[uú]meros|numbered\s+list)\b)|"
     r"(?P<bulleted>\b(?:lista\s+de\s+[íi]tems?|lista\s+con\s+vi[ñn]etas|item\s+list|bullet\s+list|list\s+of\s+items?)\b)",
     re.IGNORECASE,
 )
@@ -2049,16 +2050,18 @@ def _list_control_parts(text: str) -> tuple[str, str, list[str], str] | None:
         tail = ""
     else:
         body = remainder[:end.start()]
-        tail = remainder[end.end():].strip(" \t\r\n,;:.-–—")
-    body = body.strip(" \t\r\n,;:-–—")
+        tail = remainder[end.end():].lstrip(" \t\r\n,;:.-–—").rstrip()
+    body = body.lstrip(" \t\r\n,;:.-–—").rstrip(" \t\r\n,;")
     if not body:
         return None
 
     if _LIST_ITEM_SEPARATOR_RE.search(body):
         items = [
-            part.strip(" \t\r\n,;")
+            part.lstrip(" \t\r\n,;:.-–—").rstrip(" \t\r\n,;")
             for part in _LIST_ITEM_SEPARATOR_RE.split(body)
         ]
+        if not items[0]:
+            items = items[1:]
         if len(items) < 2 or any(not item for item in items):
             return None
     else:

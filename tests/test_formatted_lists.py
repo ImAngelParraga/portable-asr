@@ -154,6 +154,50 @@ class FormattedListTest(unittest.TestCase):
             with self.subTest(control=control):
                 self.assertIn(control, prompt)
 
+    def test_v57_punctuated_controls_and_optional_first_item_marker(self):
+        for trigger in ("Lista ordenada", "Lista numerada", "Numbered list", "Bullet list"):
+            for first_marker in ("", "Nuevo elemento ", "Nuevo elemento. "):
+                with self.subTest(trigger=trigger, first_marker=first_marker):
+                    raw = (
+                        f"Respuestas. {trigger}. {first_marker}Sí, puedes añadirlo. "
+                        "Nuevo elemento. No, debemos esperar. Fin de lista. Gracias."
+                    )
+                    marker = "-" if trigger == "Bullet list" else "1."
+                    second = "-" if trigger == "Bullet list" else "2."
+                    expected = (
+                        f"Respuestas:\n\n{marker} Sí, puedes añadirlo.\n"
+                        f"{second} No, debemos esperar.\n\nGracias."
+                    )
+                    self.assertEqual(_prepare_formatted_list_transcript(raw), expected)
+                    result, _ = self._postprocess_with_model_output(raw, expected)
+                    self.assertEqual(result, expected)
+
+    def test_v57_five_multisentence_items_survive_model_copying(self):
+        items = [
+            "Sí, puedes añadir los cambios. La opción A es correcta.",
+            "No, debemos esperar. No podemos hacerlo en cada paso.",
+            "No priorizaría ninguno. Nos interesan las estadísticas.",
+            "Lo normal es ganar el punto. Debe existir una probabilidad de fallo.",
+            "Lo importante es cada situación. Eso es lo que quiero.",
+        ]
+        raw = "Respondiendo a las preguntas. Lista ordenada. Nuevo elemento. "
+        raw += " Nuevo elemento. ".join(items)
+        expected = "Respondiendo a las preguntas:\n\n" + "\n".join(
+            f"{index}. {item}" for index, item in enumerate(items, start=1)
+        )
+        result, _ = self._postprocess_with_model_output(raw, expected)
+        self.assertEqual(result, expected)
+
+    def test_v57_empty_interior_or_trailing_items_remain_literal(self):
+        for body in (
+            "Nuevo elemento. Pan. Nuevo elemento. Nuevo elemento. Leche.",
+            "Pan. Nuevo elemento. Leche. Nuevo elemento.",
+            "Nuevo elemento. Pan.",
+        ):
+            raw = f"Lista ordenada. {body}"
+            with self.subTest(body=body):
+                self.assertEqual(_prepare_formatted_list_transcript(raw), raw)
+
 
 if __name__ == "__main__":
     unittest.main()

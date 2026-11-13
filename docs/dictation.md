@@ -25,11 +25,13 @@ The cleanup LLM receives text, not audio. It cannot recover intonation alone: an
 When post-processing is enabled, bilingual voice controls can create Markdown lists:
 
 - `lista de ítems` / `item list`: start a bulleted list.
-- `lista numerada` / `numbered list`: start a numbered list.
+- `lista numerada` / `lista ordenada` / `numbered list`: start a numbered list.
 - `nuevo ítem` / `new item`: start the next item in either list type.
 - `fin de lista` / `end of list`: optionally end the list before continuing with normal prose.
 
 Alternatives: `lista con viñetas` or `bullet list` for bullets, `lista con números` for numbering, and `nuevo elemento`, `siguiente elemento`, or `siguiente ítem` for the next item. English `next item` also works. State at least two items. Each item may contain commas when you use an explicit next-item phrase. Say `fin de lista` before continuing normal dictation.
+
+You may also say `nuevo elemento` before the first item. Sentence punctuation inserted by recognition after a control is accepted: `Lista ordenada. Nuevo elemento. Abrir el archivo. Nuevo elemento. Guardar los cambios.` produces two numbered items, preserving each item's sentence punctuation.
 
 The clause before the list control becomes the introduction with an implicit colon. For example, `hoy tengo que comprar lista de ítems plátanos nuevo ítem tomates` becomes:
 

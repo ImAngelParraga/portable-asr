@@ -101,6 +101,8 @@ V55: Recording-leading comando / modo comando / command selects deterministic co
 
 V56: Enabled successful cleanup prepares bounded Spanish prepositional phrase restarts before model and safety comparison: repeat a two-to-five-word prefix across comma, ellipsis or pause dash, with a final word of at least four letters changed by one letter; retain final spoken phrase even for copied model output or model attempts to restore the abandoned word. No vocabulary replacement; preserve verbs, quantities, identical repetitions, alternatives/enumerations, quotes/code, metalinguistic mentions and unrelated or unmarked changes. Disabled/unavailable cleanup retains raw failure contracts.
 
+V57: Successful enabled list cleanup accepts `lista ordenada` as numbered-list control, ASR sentence punctuation after controls, and an optional first-item marker; preserve item sentence punctuation and trailing prose, require at least two nonempty items, reject empty interior/trailing items, and retain sequential numbering through model safety guards.
+
 §T
 id|status|task|detail|cites
 T1|.|Document semantic ownership|Document audio endpoint response as final transcript and service ownership of vocabulary, cleanup, filler policy, correction, post-processing, and translation.|G1,G2,V5,V8
@@ -191,3 +193,4 @@ B33|2026-11-07|Parakeet split standalone impleméntalo into implementa lo; clean
 B34|2026-11-10|Verification invoked a relative virtualenv from parent workspace, so runner never started; reran from project root with absolute interpreter path|mechanical invocation error; no product invariant change
 B35|2026-11-10|Restart preparation handled only adjacent prepositions; repeated corrected phrase survived model copying and safety guards rejected deleting the abandoned phrase|V56
 B36|2026-11-10|Live cleanup treated the final tempo choice as a spelling error and restored tiempo after restart preparation; retain prepared phrase when model changes the selected wording|V56
+B37|2026-11-13|List parser omitted lista ordenada, treated ASR periods as item content, rejected initial item markers without punctuation, and stripped trailing prose punctuation|V57
